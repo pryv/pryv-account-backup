@@ -15,7 +15,7 @@ This downloads the following in JSON format:
 * Public profile
 * Accesses
 * Followed slices
-* Streames
+* Streams
 * Events
 
 As well as the following in binary files:
