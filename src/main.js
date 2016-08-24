@@ -79,33 +79,53 @@ async.series([
     });
   },
   function (done) {
+    if (fs.existsSync(eventsFile)) {
+      read({ prompt: eventsFile + ' exists, restart attachments sync only? Y/N\n'
+        + 'N will delete current events.json file and backup everything',
+        silent: false }, function (er, resetQ) {
+        if (resetQ === 'N') {
+          console.log('TODO here we should delete events');
+        }
+        done(er);
+      });
+    }  else {
+      done();
+    }
+  },
+  function (done) {
     console.log('Starting Backup');
 
     done();
   },
   function (done) {
-    async.map(['streams', 'accesses', 'followed-slices', 'profile/public'],
+    if (fs.existsSync(eventsFile)) { // skip
+      return done();
+    }
+    async.map(['streams', 'accesses', 'followed-slices', 'profile/public',
+    'events?limit=2'],
       apiToJSONFile, function (err) { 
       done(err);
     });
-  }
+  },
+  parseEvents
 ], function (err) {
   if (err) {
     console.log('Failed in process with error', err);
   }
 });
 
+//  '/events?fromTime=0&toTime=2350373077.359'
 
 
-
-function saveToFile(key, myData) {
-  var outputFilename = key.replace('/', '_') + '.json';
+function saveToFile(key, myData, done) {
+  var outputFilename = key.replace('/', '_').split('?')[0] + '.json';
   fs.writeFile(outDir + outputFilename, JSON.stringify(myData, null, 4), function (err) {
     if (err) {
       console.log(err);
     } else {
       console.log('JSON saved to ' + outDir + outputFilename);
     }
+    done(err);
   });
 }
 
@@ -149,10 +169,12 @@ function getAttachment(att, done) {
 }
 
 
-function parseEvents(events) {
+function parseEvents(done) {
+  console.log(eventsFile);
+  var events = JSON.parse(fs.readFileSync(eventsFile, 'utf8'));
   var attachments = [];
 
-  events.forEach(function (event) {
+  events.events.forEach(function (event) {
     if (event.attachments) {
       event.attachments.forEach(function (att) {
         if (att.id) {
@@ -172,6 +194,8 @@ function parseEvents(events) {
     }
 
     console.log('done');
+  }, function (err) {
+    done(err);
   });
 }
 
@@ -182,34 +206,13 @@ function apiToJSONFile (call, done) {
     method: 'GET',
     path: '/' + call,
     callback: function (error, result) {
-      if (! error) {
-        saveToFile(call,  result);
+      if (error) {
+        return done(error);
       }
-      done(error);
+      saveToFile(call,  result, done);
     },
     progressCallback: function ()  {
       console.log('.');
     }
   });
 }
-
-
-function backupEvents () {
-
-  if (fs.existsSync(eventsFile)) {
-    console.log('using local events');
-    var result = JSON.parse(fs.readFileSync(eventsFile, 'utf8'));
-    parseEvents(result.events);
-  } else {
-    console.log('fetching events');
-    connection.request('GET', '/events?fromTime=0&toTime=2350373077.359', function (error, result) {
-      if (error) {
-        console.log(error);
-      } else {
-        saveToFile('events',  result);
-        parseEvents(result.events);
-      }
-    }, null);
-  }
-}
-
