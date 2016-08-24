@@ -37,5 +37,5 @@ jspm_packages
 .node_repl_history
 app-node-backup.iml
 
-out/.idea
+.idea/
 out/
