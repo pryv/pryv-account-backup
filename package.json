@@ -1,0 +1,37 @@
+{
+  "name": "backup-node",
+  "description": "Backup your Pryv account",
+  "version": "0.0.1",
+  "private": false,
+  "keywords": [
+    "Pryv",
+    "hooks",
+    "sandbox"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pryv/app-node-backup"
+  },
+  "bugs": {
+    "url": "https://github.com/pryv/app-node-backup/issues"
+  },
+  "author": {
+    "name": "Pryv"
+  },
+  "scripts": {
+    "start": "node src/main.js"
+  },
+  "contributors": [
+    {
+      "name": "Pierre-Mikael Legris (Perki)",
+      "email": "perki@pryv.com"
+    }
+  ],
+  "dependencies": {
+    "async": "~0.9.0",
+    "mkdirp": "~0.5.0",
+    "pryv": "1.0.0",
+    "read": "^1.0.7"
+  },
+  "devDependencies": {}
+}
