@@ -15,22 +15,13 @@ function createDirs() {
   attDir = outDir + 'attachments/';
   eventsFile = outDir + 'events.json';
 
-  mkdirp(outDir, function (/*err*/) {
-    mkdirp(attDir, function (/*err*/) {
-
-      // path was created unless there was error
-
+  mkdirp(outDir, function (err) {
+    mkdirp(attDir, function (err2) {
+      if (err2) { console.log('Failed creating ' + attDir, err2); process.exit(0);}
     });
-    // path was created unless there was error
-
+    if (err) { console.log('Failed creating ' + outDir, err); process.exit(0);}
   });
 }
-
-
-
-
-
-
 
 // -- go
 var  settings = {
@@ -80,17 +71,25 @@ async.series([
   },
   function (done) {
     if (fs.existsSync(eventsFile)) {
-      read({ prompt: eventsFile + ' exists, restart attachments sync only? Y/N\n'
-        + 'N will delete current events.json file and backup everything',
+      read({ prompt: eventsFile + ' exists, restart attachments sync only?\n' +
+        '[N] will delete current events.json file and backup everything Y/N ? (default Y)',
         silent: false }, function (er, resetQ) {
-        if (resetQ === 'N') {
-          console.log('TODO here we should delete events');
+        if (resetQ.toLowerCase() === 'n') {
+          fs.unlinkSync(eventsFile);
+          console.log('Full backup restart');
         }
         done(er);
       });
     }  else {
       done();
     }
+  },
+  function (done) {
+    read({ prompt: 'Also fetch trashed data? Y/N (default N) : ', silent: false },
+      function (er, res) {
+      settings.includeTrashed = (res.toLowerCase() === 'y');
+      done(er);
+    });
   },
   function (done) {
     console.log('Starting Backup');
@@ -101,8 +100,16 @@ async.series([
     if (fs.existsSync(eventsFile)) { // skip
       return done();
     }
-    async.map(['streams', 'accesses', 'followed-slices', 'profile/public',
-    'events?limit=2'],
+
+    var eventsRequest = 'events?fromTime=-2350373077&toTime=2350373077.359';
+    var streamsRequest = 'streams';
+    if (settings.includeTrashed) {
+      eventsRequest += '&state=all';
+      streamsRequest += '?&state=all';
+    }
+
+    async.mapSeries(['account', streamsRequest, 'accesses',
+      'followed-slices', 'profile/public', eventsRequest],
       apiToJSONFile, function (err) { 
       done(err);
     });
@@ -114,7 +121,6 @@ async.series([
   }
 });
 
-//  '/events?fromTime=0&toTime=2350373077.359'
 
 
 function saveToFile(key, myData, done) {
@@ -146,7 +152,7 @@ function getAttachment(att, done) {
       att.eventId + '/' + att.id + '?readToken=' + att.readToken
   };
 
-  console.log(attFile, options.path);
+  //console.log(attFile, options.path);
 
   https.get(options, function (res) {
     var binData = '';
@@ -158,11 +164,18 @@ function getAttachment(att, done) {
 
     res.on('end', function () {
       fs.writeFile(attFile, binData, 'binary', function (err) {
-        if (err) { throw err; }
+        if (err) { 
+          console.log('Error while writing ' + attFile);
+          throw err;
+        }
         console.log('File saved.' + attFile);
         done();
       });
     });
+
+  }).on('error', function (e) {
+    console.log('Error while fetching https://' + options.host + options.path, e);
+    done(e);
   });
 
 
@@ -200,19 +213,17 @@ function parseEvents(done) {
 }
 
 
-function apiToJSONFile (call, done) {
-  console.log('Fetching: ' + call)
+function apiToJSONFile(call, done) {
+  console.log('Fetching: ' + call);
   connection.request({
     method: 'GET',
     path: '/' + call,
     callback: function (error, result) {
       if (error) {
+        console.log('Failed: ' + call);
         return done(error);
       }
       saveToFile(call,  result, done);
-    },
-    progressCallback: function ()  {
-      console.log('.');
     }
   });
 }

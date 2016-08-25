@@ -17,6 +17,7 @@ This downloads the following in JSON format:
 * Followed slices
 * Streams
 * Events
+* Account Info
 
 As well as the following in binary files:
 * Attachment files
