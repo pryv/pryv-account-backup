@@ -21,3 +21,31 @@ This downloads the following in JSON format:
 
 As well as the following in binary files:
 * Attachment files
+
+### As a package
+
+It is also possible use the backup function in your code.
+
+Add the following to your `package.json`: `"pryv-backup":"git+ssh://git@github.com:pryv/app-node-backup.git"`
+
+then use it as following:
+
+```javascript
+var backup = require('pryv-backup');
+
+var settings = {
+      username: USERNAME,  
+      domain: DOMAIN, // optional  
+      password: PASSWORD,  
+      includeTrashed: true, // default: false  
+      includeAttachments: true // default: false
+    };  
+settings.backupDirectory = new backup.Directory(settings.username, settings.domain);  
+
+backup.start(settings, function (err) {  
+      if (err) {  
+        // manage error  
+      }  
+      // ...  
+});  
+```
