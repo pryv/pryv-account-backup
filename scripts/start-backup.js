@@ -10,7 +10,6 @@ async.series([
   function inputDomain(done) {
     read({prompt: 'Domain (default: pryv.me): ', silent: false}, function (err, domain) {
       authSettings.domain = domain || 'pryv.me';
-      authSettings.origin = 'https://sw.' + authSettings.domain;
       done(err);
     });
   },

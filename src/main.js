@@ -29,8 +29,12 @@ exports.start = function (params, callback) {
     auth: null,
     port: 443,
     ssl: true,
-    domain: false
+    domain: false,
+    includeTrashed: false,
+    includeAttachments: false
   }, params);
+
+  params.origin = 'https://sw.' + params.domain;
 
   async.series([
     function createDirectoryTree(done) {
@@ -91,3 +95,8 @@ exports.start = function (params, callback) {
     callback();
   });
 };
+
+/**
+ * Expose BackupDirectory as well since it is a parameter of .start()
+ */
+exports.Directory = require('./methods/backup-directory');
