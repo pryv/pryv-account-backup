@@ -4,7 +4,8 @@ var pryv = require('Pryv'),
   async = require('async'),
   read = require('read'),
   BackupDir = require('./methods/backup-directory'),
-  apiResources = require('./methods/api-resources');
+  apiResources = require('./methods/api-resources'),
+  attachments = require('./methods/attachments');
 
 // TODO will modularize this
 var exporter = {};
@@ -121,7 +122,7 @@ async.series([
   },
   function fetchAttachments(stepDone) {
     if (authSettings.includeAttachments) {
-      downloadAttachments(backupDirectory, stepDone);
+      attachments.download(connection, backupDirectory, stepDone);
     } else {
       console.log('skipping attachments');
       stepDone();
@@ -132,91 +133,3 @@ async.series([
     console.log('Failed in process with error', err);
   }
 });
-
-/**
- * Parses the events from the provided file and downloads their attachments
- *
- * @param backupDir
- * @param callback
- */
-function downloadAttachments(backupDir, callback) {
-  var events = JSON.parse(fs.readFileSync(backupDir.eventsFile, 'utf8'));
-  var attachments = [];
-
-  // gather attachments
-  events.events.forEach(function (event) {
-    if (event.attachments) {
-      event.attachments.forEach(function (att) {
-        if (att.id) {
-          att.eventId = event.id;
-          attachments.push(att);
-        } else {
-          console.error('att.id missing', event);
-        }
-      });
-    }
-  });
-
-  // Download attachment files in 10 parralel calls
-  async.mapLimit(attachments, 10, function (item, callback) {
-    getAttachment(backupDir.attachmentsDir, item, callback);
-  }, function (error, res) {
-    if (error) {
-      console.log('################### ERROR', error, '#############');
-      return;
-    }
-    console.log('done');
-  }, function (err) {
-    callback(err);
-  });
-}
-
-
-/**
- * Download attachment file and save it on local storage under
- * {eventId_attachmentFileName}.
- * If the file already exists, it is skipped
- *
- * @param attachmentsDir
- * @param attachment
- * @param callback
- */
-function getAttachment(attachmentsDir, attachment, callback) {
-  var attFile = attachmentsDir + attachment.eventId + '_' + attachment.fileName;
-
-  if (fs.existsSync(attFile)) {
-    console.log('Skipping: ' + attFile);
-    return callback();
-  }
-
-  var options = {
-    host: connection.username + '.' + connection.settings.domain,
-    port: authSettings.port,
-    path: '/events/' +
-    attachment.eventId + '/' + attachment.id + '?readToken=' + attachment.readToken
-  };
-
-  https.get(options, function (res) {
-    var binData = '';
-    res.setEncoding('binary');
-
-    res.on('data', function (chunk) {
-      binData += chunk;
-    });
-
-    res.on('end', function () {
-      fs.writeFile(attFile, binData, 'binary', function (err) {
-        if (err) {
-          console.log('Error while writing ' + attFile);
-          throw err;
-        }
-        console.log('File saved.' + attFile);
-        callback();
-      });
-    });
-
-  }).on('error', function (e) {
-    console.log('Error while fetching https://' + options.host + options.path, e);
-    callback(e);
-  });
-}
