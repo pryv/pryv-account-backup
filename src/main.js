@@ -2,18 +2,14 @@ var pryv = require('Pryv'),
   fs = require('fs'),
   https = require('https'),
   async = require('async'),
-  mkdirp = require('mkdirp'),
-  read = require('read');
+  read = require('read'),
+  BackupDir = require('./methods/backup-directory');
 
 // TODO will modularize this
 var exporter = {};
 module.exports = exporter;
 
-var backupDirectory = {
-  baseDir: '',
-  attachmentsDir: '',
-  eventsFile: ''
-};
+var backupDirectory = null;
 
 // -- go
 var authSettings = {
@@ -47,7 +43,10 @@ async.series([
     });
   },
   function createDirectoryTree(done) {
-    createDirs(backupDirectory, done);
+    backupDirectory =
+      new BackupDir(authSettings.username, authSettings.domain);
+    console.log(backupDirectory);
+    backupDirectory.createDirs(done);
   },
   function signInToPryv(done) {
     console.log('Connecting to ' + authSettings.username + '.' + authSettings.domain);
