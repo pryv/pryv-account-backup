@@ -9,9 +9,9 @@ var pryv = require('Pryv'),
 var exporter = {};
 module.exports = exporter;
 
-var filesAndFolder = {
-  outDir: '',
-  attDir: '',
+var backupDirectory = {
+  baseDir: '',
+  attachmentsDir: '',
   eventsFile: ''
 };
 
@@ -47,7 +47,7 @@ async.series([
     });
   },
   function createDirectoryTree(done) {
-    createDirs(filesAndFolder, done);
+    createDirs(backupDirectory, done);
   },
   function signInToPryv(done) {
     console.log('Connecting to ' + authSettings.username + '.' + authSettings.domain);
@@ -61,15 +61,15 @@ async.series([
       done();
     });
   },
-  function promptOverwriteEvents(done) {
-    if (fs.existsSync(filesAndFolder.eventsFile)) {
+  function askOverwriteEvents(done) {
+    if (fs.existsSync(backupDirectory.eventsFile)) {
       read({
-        prompt: filesAndFolder.eventsFile + ' exists, restart attachments sync only?\n' +
+        prompt: backupDirectory.eventsFile + ' exists, restart attachments sync only?\n' +
         '[N] will delete current events.json file and backup everything Y/N ? (default Y)',
         silent: false
       }, function (err, resetQ) {
         if (resetQ.toLowerCase() === 'n') {
-          fs.unlinkSync(filesAndFolder.eventsFile);
+          fs.unlinkSync(backupDirectory.eventsFile);
           console.log('Full backup restart');
         }
         done(err);
@@ -78,14 +78,14 @@ async.series([
       done();
     }
   },
-  function promptIncludeTrashed(done) {
+  function askIncludeTrashed(done) {
     read({prompt: 'Also fetch trashed data? Y/N (default N) : ', silent: false},
       function (er, res) {
         authSettings.includeTrashed = (res.toLowerCase() === 'y');
         done(er);
       });
   },
-  function promptIncludeAttachments(done) {
+  function askIncludeAttachments(done) {
     read({prompt: 'Also fetch attachment files? Y/N (default N) : ', silent: false},
       function (er, res) {
         authSettings.includeAttachments = (res.toLowerCase() === 'y');
@@ -96,7 +96,7 @@ async.series([
     console.log('Starting Backup');
 
     // TODO we skip all info if events are skipped - need more granularity
-    if (fs.existsSync(filesAndFolder.eventsFile)) { // skip
+    if (fs.existsSync(backupDirectory.eventsFile)) { // skip
       return done();
     }
 
@@ -110,14 +110,18 @@ async.series([
     async.mapSeries(['account', streamsRequest, 'accesses',
         'followed-slices', 'profile/public', eventsRequest],
       function (resource, callback) {
-        apiToJSONFile(filesAndFolder.outDir, resource, callback)
+        apiToJSONFile({
+          folder: backupDirectory.baseDir,
+          resource: resource,
+          connection: connection
+        }, callback)
       }, function (err) {
         done(err);
       });
   },
-  function downloadAttachments(stepDone) {
+  function fetchAttachments(stepDone) {
     if (authSettings.includeAttachments) {
-      downloadAttachments(filesAndFolder.eventsFile, stepDone);
+      downloadAttachments(backupDirectory, stepDone);
     } else {
       console.log('skipping attachments');
       stepDone();
@@ -137,26 +141,26 @@ async.series([
  *    attachments/
  *
  * @param options {object}
- *        options.outDir
+ *        options.baseDir
  *        options.eventsFile
- *        options.attDir
+ *        options.attachmentsDir
  */
 function createDirs(options, callback) {
   // humm.. could be better
-  options.outDir = './out/' + authSettings.username + '.' + authSettings.domain + '/';
-  options.attDir = options.outDir + 'attachments/';
-  options.eventsFile = options.outDir + 'events.json';
+  options.baseDir = './out/' + authSettings.username + '.' + authSettings.domain + '/';
+  options.attachmentsDir = options.baseDir + 'attachments/';
+  options.eventsFile = options.baseDir + 'events.json';
 
-  mkdirp(options.outDir, function (err) {
+  mkdirp(options.baseDir, function (err) {
     if (err) {
-      console.log('Failed creating ' + options.outDir, err)
+      console.log('Failed creating ' + options.baseDir, err)
       // process.exit(0);
       callback(err);
     }
 
-    mkdirp(options.attDir, function (err2) {
+    mkdirp(options.attachmentsDir, function (err2) {
       if (err2) {
-        console.log('Failed creating ' + options.attDir, err2);
+        console.log('Failed creating ' + options.attachmentsDir, err2);
         // process.exit(0);
         callback(err2);
       }
@@ -168,20 +172,23 @@ function createDirs(options, callback) {
 /**
  * Downloads the requested Pryv API resource and saves it to a local file
  *
- * @param resource
+ * @param params {object}
+ *        params.connection {pryv.Connection}
+ *        params.resource {string} Pryv API resource name
+ *        params.folder {string}
  * @param callback
  */
-function apiToJSONFile(folder, resource, callback) {
-  console.log('Fetching: ' + resource);
-  connection.request({
+function apiToJSONFile(params, callback) {
+  console.log('Fetching: ' + params.resource);
+  params.connection.request({
     method: 'GET',
-    path: '/' + resource,
+    path: '/' + params.resource,
     callback: function (error, result) {
       if (error) {
-        console.log('Failed: ' + resource);
+        console.log('Failed: ' + params.resource);
         return callback(error);
       }
-      saveToFile(folder, resource, result, callback);
+      saveToFile(params.folder, params.resource, result, callback);
     }
   });
 }
@@ -212,11 +219,11 @@ function saveToFile(folder, resourceName, jsonData, callback) {
 /**
  * Parses the events from the provided file and downloads their attachments
  *
- * @param eventsFile
+ * @param backupDir
  * @param callback
  */
-function downloadAttachments(eventsFile, callback) {
-  var events = JSON.parse(fs.readFileSync(eventsFile, 'utf8'));
+function downloadAttachments(backupDir, callback) {
+  var events = JSON.parse(fs.readFileSync(backupDir.eventsFile, 'utf8'));
   var attachments = [];
 
   // gather attachments
@@ -233,13 +240,14 @@ function downloadAttachments(eventsFile, callback) {
     }
   });
 
-  // Download attachment files 10 by 10
-  async.mapLimit(attachments, 10, getAttachment, function (error, res) {
+  // Download attachment files in 10 parralel calls
+  async.mapLimit(attachments, 10, function (item, callback) {
+    getAttachment(backupDir.attachmentsDir, item, callback);
+  }, function (error, res) {
     if (error) {
       console.log('################### ERROR', error, '#############');
       return;
     }
-
     console.log('done');
   }, function (err) {
     callback(err);
@@ -252,11 +260,12 @@ function downloadAttachments(eventsFile, callback) {
  * {eventId_attachmentFileName}.
  * If the file already exists, it is skipped
  *
+ * @param attachmentsDir
  * @param attachment
  * @param callback
  */
-function getAttachment(attachment, callback) {
-  var attFile = attachmentsDirectory + attachment.eventId + '_' + attachment.fileName;
+function getAttachment(attachmentsDir, attachment, callback) {
+  var attFile = attachmentsDir + attachment.eventId + '_' + attachment.fileName;
 
   if (fs.existsSync(attFile)) {
     console.log('Skipping: ' + attFile);
