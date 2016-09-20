@@ -19,7 +19,7 @@
     "name": "Pryv"
   },
   "scripts": {
-    "start": "node src/main.js",
+    "start": "node scripts/start-backup.js",
     "test": "mocha test/**/*.test.js"
   },
   "contributors": [
