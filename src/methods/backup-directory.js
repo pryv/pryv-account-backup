@@ -14,7 +14,13 @@ var BackupDirectory = module.exports = function (username, domain) {
 };
 
 /**
- * Creates the directories where the backup files will be stored
+ * Creates the directories where the backup files will be stored:
+ *
+ * out/
+ *  username.domain/
+ *    attachments/
+ *    events.json
+ *    *.json
  *
  * @param callback
  */

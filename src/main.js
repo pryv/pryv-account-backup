@@ -3,7 +3,8 @@ var pryv = require('Pryv'),
   https = require('https'),
   async = require('async'),
   read = require('read'),
-  BackupDir = require('./methods/backup-directory');
+  BackupDir = require('./methods/backup-directory'),
+  apiResources = require('./methods/api-resources');
 
 // TODO will modularize this
 var exporter = {};
@@ -109,7 +110,7 @@ async.series([
     async.mapSeries(['account', streamsRequest, 'accesses',
         'followed-slices', 'profile/public', eventsRequest],
       function (resource, callback) {
-        apiToJSONFile({
+        apiResources.toJSONFile({
           folder: backupDirectory.baseDir,
           resource: resource,
           connection: connection
@@ -131,89 +132,6 @@ async.series([
     console.log('Failed in process with error', err);
   }
 });
-
-/**
- * Creates the following directory tree in the current folder:
- * out/
- *  username.domain/
- *    events.json
- *    attachments/
- *
- * @param options {object}
- *        options.baseDir
- *        options.eventsFile
- *        options.attachmentsDir
- */
-function createDirs(options, callback) {
-  // humm.. could be better
-  options.baseDir = './out/' + authSettings.username + '.' + authSettings.domain + '/';
-  options.attachmentsDir = options.baseDir + 'attachments/';
-  options.eventsFile = options.baseDir + 'events.json';
-
-  mkdirp(options.baseDir, function (err) {
-    if (err) {
-      console.log('Failed creating ' + options.baseDir, err)
-      // process.exit(0);
-      callback(err);
-    }
-
-    mkdirp(options.attachmentsDir, function (err2) {
-      if (err2) {
-        console.log('Failed creating ' + options.attachmentsDir, err2);
-        // process.exit(0);
-        callback(err2);
-      }
-      callback();
-    });
-  });
-}
-
-/**
- * Downloads the requested Pryv API resource and saves it to a local file
- *
- * @param params {object}
- *        params.connection {pryv.Connection}
- *        params.resource {string} Pryv API resource name
- *        params.folder {string}
- * @param callback
- */
-function apiToJSONFile(params, callback) {
-  console.log('Fetching: ' + params.resource);
-  params.connection.request({
-    method: 'GET',
-    path: '/' + params.resource,
-    callback: function (error, result) {
-      if (error) {
-        console.log('Failed: ' + params.resource);
-        return callback(error);
-      }
-      saveToFile(params.folder, params.resource, result, callback);
-    }
-  });
-}
-
-/**
- * Saves the data to a JSON file under the name `resource.json` (spaces are converted to
- * underscores) in the provided folder.
- *
- * @param folder
- * @param resourceName
- * @param jsonData
- * @param callback
- */
-function saveToFile(folder, resourceName, jsonData, callback) {
-  console.log('saving to folder: ', folder);
-  var outputFilename = resourceName.replace('/', '_').split('?')[0] + '.json';
-  fs.writeFile(folder + outputFilename, JSON.stringify(jsonData, null, 4), function (err) {
-    if (err) {
-      console.error(err);
-    } else {
-      console.log('JSON saved to ' + folder + outputFilename);
-    }
-    callback(err);
-  });
-}
-
 
 /**
  * Parses the events from the provided file and downloads their attachments
