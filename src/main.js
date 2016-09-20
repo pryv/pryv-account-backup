@@ -5,24 +5,15 @@ var pryv = require('Pryv'),
   mkdirp = require('mkdirp'),
   read = require('read');
 
+// TODO will modularize this
 var exporter = {};
-
 module.exports = exporter;
 
-var outDir, attDir, eventsFile;
-function createDirs() {
-  // humm.. could be better
-  outDir = './out/' + authSettings.username + '.' + authSettings.domain + '/';
-  attDir = outDir + 'attachments/';
-  eventsFile = outDir + 'events.json';
-
-  mkdirp(outDir, function (err) {
-    mkdirp(attDir, function (err2) {
-      if (err2) { console.log('Failed creating ' + attDir, err2); process.exit(0);}
-    });
-    if (err) { console.log('Failed creating ' + outDir, err); process.exit(0);}
-  });
-}
+var filesAndFolder = {
+  outDir: '',
+  attDir: '',
+  eventsFile: ''
+};
 
 // -- go
 var authSettings = {
@@ -35,31 +26,31 @@ var authSettings = {
   },
   connection = null;
 
-
 async.series([
-  function (done) {
-    read({ prompt: 'Domain (default: pryv.me): ', silent: false }, function (er, domain) {
-      authSettings.domain = domain || 'pryv.me';
+  function inputDomain(done) {
+    read({prompt: 'Domain (default: pryv.me): ', silent: false}, function (er, domain) {
+      authSettings.domain = domain || 'pryv.me';
       authSettings.origin = 'https://sw.' + authSettings.domain;
       done(er);
     });
   },
-  function (done) {
-    read({ prompt: 'Username : ', silent: false }, function (er, username) {
+  function inputUsername(done) {
+    read({prompt: 'Username : ', silent: false}, function (er, username) {
       authSettings.username = username;
       done(er);
     });
   },
-  function (done) {
-    read({ prompt: 'Password : ', silent: true }, function (er, password) {
+  function inputPassword(done) {
+    read({prompt: 'Password : ', silent: true}, function (er, password) {
       authSettings.password = password;
       done(er);
     });
   },
-  function (done) {
+  function createDirectoryTree(done) {
+    createDirs(filesAndFolder, done);
+  },
+  function signInToPryv(done) {
     console.log('Connecting to ' + authSettings.username + '.' + authSettings.domain);
-
-    createDirs();
 
     pryv.Connection.login(authSettings, function (err, conn) {
       if (err) {
@@ -70,30 +61,32 @@ async.series([
       done();
     });
   },
-  function (done) {
-    if (fs.existsSync(eventsFile)) {
-      read({ prompt: eventsFile + ' exists, restart attachments sync only?\n' +
+  function promptOverwriteEvents(done) {
+    if (fs.existsSync(filesAndFolder.eventsFile)) {
+      read({
+        prompt: filesAndFolder.eventsFile + ' exists, restart attachments sync only?\n' +
         '[N] will delete current events.json file and backup everything Y/N ? (default Y)',
-        silent: false }, function (er, resetQ) {
+        silent: false
+      }, function (err, resetQ) {
         if (resetQ.toLowerCase() === 'n') {
-          fs.unlinkSync(eventsFile);
+          fs.unlinkSync(filesAndFolder.eventsFile);
           console.log('Full backup restart');
         }
-        done(er);
+        done(err);
       });
-    }  else {
+    } else {
       done();
     }
   },
-  function (done) {
-    read({ prompt: 'Also fetch trashed data? Y/N (default N) : ', silent: false },
+  function promptIncludeTrashed(done) {
+    read({prompt: 'Also fetch trashed data? Y/N (default N) : ', silent: false},
       function (er, res) {
-      authSettings.includeTrashed = (res.toLowerCase() === 'y');
-      done(er);
-    });
+        authSettings.includeTrashed = (res.toLowerCase() === 'y');
+        done(er);
+      });
   },
-  function (done) {
-    read({ prompt: 'Also fetch attachment files? Y/N (default N) : ', silent: false },
+  function promptIncludeAttachments(done) {
+    read({prompt: 'Also fetch attachment files? Y/N (default N) : ', silent: false},
       function (er, res) {
         authSettings.includeAttachments = (res.toLowerCase() === 'y');
         done(er);
@@ -102,10 +95,8 @@ async.series([
   function (done) {
     console.log('Starting Backup');
 
-    done();
-  },
-  function (done) {
-    if (fs.existsSync(eventsFile)) { // skip
+    // TODO we skip all info if events are skipped - need more granularity
+    if (fs.existsSync(filesAndFolder.eventsFile)) { // skip
       return done();
     }
 
@@ -117,14 +108,16 @@ async.series([
     }
 
     async.mapSeries(['account', streamsRequest, 'accesses',
-      'followed-slices', 'profile/public', eventsRequest],
-      apiToJSONFile, function (err) { 
-      done(err);
-    });
+        'followed-slices', 'profile/public', eventsRequest],
+      function (resource, callback) {
+        apiToJSONFile(filesAndFolder.outDir, resource, callback)
+      }, function (err) {
+        done(err);
+      });
   },
-  function (stepDone) {
+  function downloadAttachments(stepDone) {
     if (authSettings.includeAttachments) {
-      downloadAttachments(eventsFile, stepDone);
+      downloadAttachments(filesAndFolder.eventsFile, stepDone);
     } else {
       console.log('skipping attachments');
       stepDone();
@@ -137,12 +130,48 @@ async.series([
 });
 
 /**
+ * Creates the following directory tree in the current folder:
+ * out/
+ *  username.domain/
+ *    events.json
+ *    attachments/
+ *
+ * @param options {object}
+ *        options.outDir
+ *        options.eventsFile
+ *        options.attDir
+ */
+function createDirs(options, callback) {
+  // humm.. could be better
+  options.outDir = './out/' + authSettings.username + '.' + authSettings.domain + '/';
+  options.attDir = options.outDir + 'attachments/';
+  options.eventsFile = options.outDir + 'events.json';
+
+  mkdirp(options.outDir, function (err) {
+    if (err) {
+      console.log('Failed creating ' + options.outDir, err)
+      // process.exit(0);
+      callback(err);
+    }
+
+    mkdirp(options.attDir, function (err2) {
+      if (err2) {
+        console.log('Failed creating ' + options.attDir, err2);
+        // process.exit(0);
+        callback(err2);
+      }
+      callback();
+    });
+  });
+}
+
+/**
  * Downloads the requested Pryv API resource and saves it to a local file
  *
  * @param resource
  * @param callback
  */
-function apiToJSONFile(resource, callback) {
+function apiToJSONFile(folder, resource, callback) {
   console.log('Fetching: ' + resource);
   connection.request({
     method: 'GET',
@@ -152,26 +181,28 @@ function apiToJSONFile(resource, callback) {
         console.log('Failed: ' + resource);
         return callback(error);
       }
-      saveToFile(resource,  result, callback);
+      saveToFile(folder, resource, result, callback);
     }
   });
 }
 
 /**
  * Saves the data to a JSON file under the name `resource.json` (spaces are converted to
- * underscores).
+ * underscores) in the provided folder.
  *
+ * @param folder
  * @param resourceName
  * @param jsonData
  * @param callback
  */
-function saveToFile(resourceName, jsonData, callback) {
+function saveToFile(folder, resourceName, jsonData, callback) {
+  console.log('saving to folder: ', folder);
   var outputFilename = resourceName.replace('/', '_').split('?')[0] + '.json';
-  fs.writeFile(outDir + outputFilename, JSON.stringify(jsonData, null, 4), function (err) {
+  fs.writeFile(folder + outputFilename, JSON.stringify(jsonData, null, 4), function (err) {
     if (err) {
-      console.log(err);
+      console.error(err);
     } else {
-      console.log('JSON saved to ' + outDir + outputFilename);
+      console.log('JSON saved to ' + folder + outputFilename);
     }
     callback(err);
   });
@@ -225,7 +256,7 @@ function downloadAttachments(eventsFile, callback) {
  * @param callback
  */
 function getAttachment(attachment, callback) {
-  var attFile = attDir + attachment.eventId + '_' + attachment.fileName;
+  var attFile = attachmentsDirectory + attachment.eventId + '_' + attachment.fileName;
 
   if (fs.existsSync(attFile)) {
     console.log('Skipping: ' + attFile);
