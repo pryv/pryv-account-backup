@@ -1,135 +1,93 @@
-var pryv = require('Pryv'),
+var pryv = require('pryv'),
   fs = require('fs'),
   https = require('https'),
   async = require('async'),
   read = require('read'),
-  BackupDir = require('./methods/backup-directory'),
+  _ = require('lodash'),
   apiResources = require('./methods/api-resources'),
   attachments = require('./methods/attachments');
 
-// TODO will modularize this
-var exporter = {};
-module.exports = exporter;
+/**
+ * Downloads the user data in
+ *
+ * @param params {object}
+ *        params.username {string}
+ *        params.password {string}
+ *        params.domain {string}
+ *        params.includeTrashed {boolean}
+ *        params.includeAttachments {boolean}
+ *        params.backupDirectory {backup-directory}
+ */
+exports.start = function (params, callback) {
 
-var backupDirectory = null;
+  var backupDirectory = params.backupDirectory,
+    connection = null;
 
-// -- go
-var authSettings = {
+  params = _.extend({
     appId: 'pryv-backup',
     username: null,
     auth: null,
     port: 443,
     ssl: true,
     domain: false
-  },
-  connection = null;
+  }, params);
 
-async.series([
-  function inputDomain(done) {
-    read({prompt: 'Domain (default: pryv.me): ', silent: false}, function (er, domain) {
-      authSettings.domain = domain || 'pryv.me';
-      authSettings.origin = 'https://sw.' + authSettings.domain;
-      done(er);
-    });
-  },
-  function inputUsername(done) {
-    read({prompt: 'Username : ', silent: false}, function (er, username) {
-      authSettings.username = username;
-      done(er);
-    });
-  },
-  function inputPassword(done) {
-    read({prompt: 'Password : ', silent: true}, function (er, password) {
-      authSettings.password = password;
-      done(er);
-    });
-  },
-  function createDirectoryTree(done) {
-    backupDirectory =
-      new BackupDir(authSettings.username, authSettings.domain);
-    console.log(backupDirectory);
-    backupDirectory.createDirs(done);
-  },
-  function signInToPryv(done) {
-    console.log('Connecting to ' + authSettings.username + '.' + authSettings.domain);
+  async.series([
+    function createDirectoryTree(done) {
+      backupDirectory.createDirs(done);
+    },
+    function signInToPryv(done) {
+      console.log('Connecting to ' + params.username + '.' + params.domain);
 
-    pryv.Connection.login(authSettings, function (err, conn) {
-      if (err) {
-        console.log('Connection failed with Error:', err);
-        return done(err);
-      }
-      connection = conn;
-      done();
-    });
-  },
-  function askOverwriteEvents(done) {
-    if (fs.existsSync(backupDirectory.eventsFile)) {
-      read({
-        prompt: backupDirectory.eventsFile + ' exists, restart attachments sync only?\n' +
-        '[N] will delete current events.json file and backup everything Y/N ? (default Y)',
-        silent: false
-      }, function (err, resetQ) {
-        if (resetQ.toLowerCase() === 'n') {
-          fs.unlinkSync(backupDirectory.eventsFile);
-          console.log('Full backup restart');
+      pryv.Connection.login(params, function (err, conn) {
+        if (err) {
+          console.log('Connection failed with Error:', err);
+          return done(err);
         }
-        done(err);
+        connection = conn;
+        done();
       });
-    } else {
-      done();
-    }
-  },
-  function askIncludeTrashed(done) {
-    read({prompt: 'Also fetch trashed data? Y/N (default N) : ', silent: false},
-      function (er, res) {
-        authSettings.includeTrashed = (res.toLowerCase() === 'y');
-        done(er);
-      });
-  },
-  function askIncludeAttachments(done) {
-    read({prompt: 'Also fetch attachment files? Y/N (default N) : ', silent: false},
-      function (er, res) {
-        authSettings.includeAttachments = (res.toLowerCase() === 'y');
-        done(er);
-      });
-  },
-  function (done) {
-    console.log('Starting Backup');
+    },
+    function fetchData (done) {
+      console.log('Starting Backup');
 
-    // TODO we skip all info if events are skipped - need more granularity
-    if (fs.existsSync(backupDirectory.eventsFile)) { // skip
-      return done();
-    }
+      // TODO we skip all data if events are skipped - need more granularity
+      if (fs.existsSync(backupDirectory.eventsFile)) { // skip
+        return done();
+      }
 
-    var eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000;
-    var streamsRequest = 'streams';
-    if (authSettings.includeTrashed) {
-      eventsRequest += '&state=all';
-      streamsRequest += '?&state=all';
-    }
+      var eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000;
+      var streamsRequest = 'streams';
+      if (params.includeTrashed) {
+        eventsRequest += '&state=all';
+        streamsRequest += '?&state=all';
+      }
 
-    async.mapSeries(['account', streamsRequest, 'accesses',
-        'followed-slices', 'profile/public', eventsRequest],
-      function (resource, callback) {
-        apiResources.toJSONFile({
-          folder: backupDirectory.baseDir,
-          resource: resource,
-          connection: connection
-        }, callback)
-      }, function (err) {
-        done(err);
-      });
-  },
-  function fetchAttachments(stepDone) {
-    if (authSettings.includeAttachments) {
-      attachments.download(connection, backupDirectory, stepDone);
-    } else {
-      console.log('skipping attachments');
-      stepDone();
+      async.mapSeries(['account', streamsRequest, 'accesses',
+          'followed-slices', 'profile/public', eventsRequest],
+        function (resource, callback) {
+          apiResources.toJSONFile({
+            folder: backupDirectory.baseDir,
+            resource: resource,
+            connection: connection
+          }, callback)
+        }, function (err) {
+          done(err);
+        });
+    },
+    function fetchAttachments (stepDone) {
+      if (params.includeAttachments) {
+        attachments.download(connection, backupDirectory, stepDone);
+      } else {
+        console.log('skipping attachments');
+        stepDone();
+      }
     }
-  }
-], function (err) {
-  if (err) {
-    console.log('Failed in process with error', err);
-  }
-});
+  ], function (err) {
+    if (err) {
+      console.error('Failed in process with error', err);
+      return callback(err);
+    }
+    callback();
+  });
+};

@@ -1,76 +1,55 @@
-var pryv = require('pryv'),
-  fs = require('fs'),
-  https = require('https'),
+var fs = require('fs'),
   async = require('async'),
   read = require('read'),
-  BackupDir = require('../src/methods/backup-directory'),
-  apiResources = require('../src/methods/api-resources'),
-  attachments = require('../src/methods/attachments');
+  backup = require('../src/main'),
+  BackupDirectory = require('../src/methods/backup-directory');
 
-// TODO will modularize this
-var exporter = {};
-module.exports = exporter;
-
-var backupDirectory = null;
-
-// -- go
-var authSettings = {
-    appId: 'pryv-backup',
-    username: null,
-    auth: null,
-    port: 443,
-    ssl: true,
-    domain: false
-  },
-  connection = null;
+var authSettings = {};
 
 async.series([
   function inputDomain(done) {
-    read({prompt: 'Domain (default: pryv.me): ', silent: false}, function (er, domain) {
+    read({prompt: 'Domain (default: pryv.me): ', silent: false}, function (err, domain) {
       authSettings.domain = domain || 'pryv.me';
       authSettings.origin = 'https://sw.' + authSettings.domain;
-      done(er);
+      done(err);
     });
   },
   function inputUsername(done) {
-    read({prompt: 'Username : ', silent: false}, function (er, username) {
+    read({prompt: 'Username : ', silent: false}, function (err, username) {
       authSettings.username = username;
-      done(er);
+      done(err);
     });
   },
   function inputPassword(done) {
-    read({prompt: 'Password : ', silent: true}, function (er, password) {
+    read({prompt: 'Password : ', silent: true}, function (err, password) {
       authSettings.password = password;
-      done(er);
+      done(err);
     });
   },
-  function createDirectoryTree(done) {
-    backupDirectory =
-      new BackupDir(authSettings.username, authSettings.domain);
-    console.log(backupDirectory);
-    backupDirectory.createDirs(done);
+  function askIncludeTrashed(done) {
+    read({prompt: 'Also fetch trashed data? Y/N (default N) : ', silent: false},
+      function (err, res) {
+        authSettings.includeTrashed = (res.toLowerCase() === 'y');
+        done(err);
+      });
   },
-  function signInToPryv(done) {
-    console.log('Connecting to ' + authSettings.username + '.' + authSettings.domain);
-
-    pryv.Connection.login(authSettings, function (err, conn) {
-      if (err) {
-        console.log('Connection failed with Error:', err);
-        return done(err);
-      }
-      connection = conn;
-      done();
-    });
+  function askIncludeAttachments(done) {
+    read({prompt: 'Also fetch attachment files? Y/N (default N) : ', silent: false},
+      function (err, res) {
+        authSettings.includeAttachments = (res.toLowerCase() === 'y');
+        done(err);
+      });
   },
   function askOverwriteEvents(done) {
-    if (fs.existsSync(backupDirectory.eventsFile)) {
+    authSettings.backupDirectory = new BackupDirectory(authSettings.username, authSettings.domain);
+    if (fs.existsSync(authSettings.backupDirectory.eventsFile)) {
       read({
-        prompt: backupDirectory.eventsFile + ' exists, restart attachments sync only?\n' +
+        prompt: authSettings.backupDirectory.eventsFile + ' exists, restart attachments sync only?\n' +
         '[N] will delete current events.json file and backup everything Y/N ? (default Y)',
         silent: false
       }, function (err, resetQ) {
         if (resetQ.toLowerCase() === 'n') {
-          fs.unlinkSync(backupDirectory.eventsFile);
+          fs.unlinkSync(authSettings.backupDirectory.eventsFile);
           console.log('Full backup restart');
         }
         done(err);
@@ -79,54 +58,8 @@ async.series([
       done();
     }
   },
-  function askIncludeTrashed(done) {
-    read({prompt: 'Also fetch trashed data? Y/N (default N) : ', silent: false},
-      function (er, res) {
-        authSettings.includeTrashed = (res.toLowerCase() === 'y');
-        done(er);
-      });
-  },
-  function askIncludeAttachments(done) {
-    read({prompt: 'Also fetch attachment files? Y/N (default N) : ', silent: false},
-      function (er, res) {
-        authSettings.includeAttachments = (res.toLowerCase() === 'y');
-        done(er);
-      });
-  },
-  function (done) {
-    console.log('Starting Backup');
-
-    // TODO we skip all info if events are skipped - need more granularity
-    if (fs.existsSync(backupDirectory.eventsFile)) { // skip
-      return done();
-    }
-
-    var eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000;
-    var streamsRequest = 'streams';
-    if (authSettings.includeTrashed) {
-      eventsRequest += '&state=all';
-      streamsRequest += '?&state=all';
-    }
-
-    async.mapSeries(['account', streamsRequest, 'accesses',
-        'followed-slices', 'profile/public', eventsRequest],
-      function (resource, callback) {
-        apiResources.toJSONFile({
-          folder: backupDirectory.baseDir,
-          resource: resource,
-          connection: connection
-        }, callback)
-      }, function (err) {
-        done(err);
-      });
-  },
-  function fetchAttachments(stepDone) {
-    if (authSettings.includeAttachments) {
-      attachments.download(connection, backupDirectory, stepDone);
-    } else {
-      console.log('skipping attachments');
-      stepDone();
-    }
+  function doBackup(stepDone) {
+    backup.start(authSettings, stepDone);
   }
 ], function (err) {
   if (err) {

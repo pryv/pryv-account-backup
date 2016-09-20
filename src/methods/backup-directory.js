@@ -8,7 +8,7 @@ var mkdirp = require('mkdirp'),
  * @param domain
  */
 var BackupDirectory = module.exports = function (username, domain) {
-  this.baseDir = './out/' + username + '.' + domain + '/';
+  this.baseDir = './backup/' + username + '.' + domain + '/';
   this.attachmentsDir = this.baseDir + 'attachments/';
   this.eventsFile = this.baseDir + 'events.json';
 };
