@@ -5,13 +5,14 @@ var pryv = require('Pryv'),
   mkdirp = require('mkdirp'),
   read = require('read');
 
+var exporter = {};
 
-
+module.exports = exporter;
 
 var outDir, attDir, eventsFile;
 function createDirs() {
   // humm.. could be better
-  outDir = './out/' + settings.username + '.' + settings.domain + '/';
+  outDir = './out/' + authSettings.username + '.' + authSettings.domain + '/';
   attDir = outDir + 'attachments/';
   eventsFile = outDir + 'events.json';
 
@@ -24,7 +25,7 @@ function createDirs() {
 }
 
 // -- go
-var  settings = {
+var authSettings = {
     appId: 'pryv-backup',
     username: null,
     auth: null,
@@ -38,29 +39,29 @@ var  settings = {
 async.series([
   function (done) {
     read({ prompt: 'Domain (default: pryv.me): ', silent: false }, function (er, domain) {
-      settings.domain = domain || 'pryv.me';
-      settings.origin = 'https://sw.' + settings.domain;
+      authSettings.domain = domain || 'pryv.me';
+      authSettings.origin = 'https://sw.' + authSettings.domain;
       done(er);
     });
   },
   function (done) {
     read({ prompt: 'Username : ', silent: false }, function (er, username) {
-      settings.username = username;
+      authSettings.username = username;
       done(er);
     });
   },
   function (done) {
     read({ prompt: 'Password : ', silent: true }, function (er, password) {
-      settings.password = password;
+      authSettings.password = password;
       done(er);
     });
   },
   function (done) {
-    console.log('Connecting to ' + settings.username + '.' + settings.domain);
+    console.log('Connecting to ' + authSettings.username + '.' + authSettings.domain);
 
     createDirs();
 
-    pryv.Connection.login(settings, function (err, conn) {
+    pryv.Connection.login(authSettings, function (err, conn) {
       if (err) {
         console.log('Connection failed with Error:', err);
         return done(err);
@@ -87,9 +88,16 @@ async.series([
   function (done) {
     read({ prompt: 'Also fetch trashed data? Y/N (default N) : ', silent: false },
       function (er, res) {
-      settings.includeTrashed = (res.toLowerCase() === 'y');
+      authSettings.includeTrashed = (res.toLowerCase() === 'y');
       done(er);
     });
+  },
+  function (done) {
+    read({ prompt: 'Also fetch attachment files? Y/N (default N) : ', silent: false },
+      function (er, res) {
+        authSettings.includeAttachments = (res.toLowerCase() === 'y');
+        done(er);
+      });
   },
   function (done) {
     console.log('Starting Backup');
@@ -101,9 +109,9 @@ async.series([
       return done();
     }
 
-    var eventsRequest = 'events?fromTime=-2350373077&toTime=2350373077.359';
+    var eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000;
     var streamsRequest = 'streams';
-    if (settings.includeTrashed) {
+    if (authSettings.includeTrashed) {
       eventsRequest += '&state=all';
       streamsRequest += '?&state=all';
     }
@@ -114,45 +122,122 @@ async.series([
       done(err);
     });
   },
-  parseEvents
+  function (stepDone) {
+    if (authSettings.includeAttachments) {
+      downloadAttachments(eventsFile, stepDone);
+    } else {
+      console.log('skipping attachments');
+      stepDone();
+    }
+  }
 ], function (err) {
   if (err) {
     console.log('Failed in process with error', err);
   }
 });
 
+/**
+ * Downloads the requested Pryv API resource and saves it to a local file
+ *
+ * @param resource
+ * @param callback
+ */
+function apiToJSONFile(resource, callback) {
+  console.log('Fetching: ' + resource);
+  connection.request({
+    method: 'GET',
+    path: '/' + resource,
+    callback: function (error, result) {
+      if (error) {
+        console.log('Failed: ' + resource);
+        return callback(error);
+      }
+      saveToFile(resource,  result, callback);
+    }
+  });
+}
 
-
-function saveToFile(key, myData, done) {
-  var outputFilename = key.replace('/', '_').split('?')[0] + '.json';
-  fs.writeFile(outDir + outputFilename, JSON.stringify(myData, null, 4), function (err) {
+/**
+ * Saves the data to a JSON file under the name `resource.json` (spaces are converted to
+ * underscores).
+ *
+ * @param resourceName
+ * @param jsonData
+ * @param callback
+ */
+function saveToFile(resourceName, jsonData, callback) {
+  var outputFilename = resourceName.replace('/', '_').split('?')[0] + '.json';
+  fs.writeFile(outDir + outputFilename, JSON.stringify(jsonData, null, 4), function (err) {
     if (err) {
       console.log(err);
     } else {
       console.log('JSON saved to ' + outDir + outputFilename);
     }
-    done(err);
+    callback(err);
   });
 }
 
 
+/**
+ * Parses the events from the provided file and downloads their attachments
+ *
+ * @param eventsFile
+ * @param callback
+ */
+function downloadAttachments(eventsFile, callback) {
+  var events = JSON.parse(fs.readFileSync(eventsFile, 'utf8'));
+  var attachments = [];
 
-function getAttachment(att, done) {
-  var attFile = attDir + att.eventId + '_' + att.fileName;
+  // gather attachments
+  events.events.forEach(function (event) {
+    if (event.attachments) {
+      event.attachments.forEach(function (att) {
+        if (att.id) {
+          att.eventId = event.id;
+          attachments.push(att);
+        } else {
+          console.error('att.id missing', event);
+        }
+      });
+    }
+  });
+
+  // Download attachment files 10 by 10
+  async.mapLimit(attachments, 10, getAttachment, function (error, res) {
+    if (error) {
+      console.log('################### ERROR', error, '#############');
+      return;
+    }
+
+    console.log('done');
+  }, function (err) {
+    callback(err);
+  });
+}
+
+
+/**
+ * Download attachment file and save it on local storage under
+ * {eventId_attachmentFileName}.
+ * If the file already exists, it is skipped
+ *
+ * @param attachment
+ * @param callback
+ */
+function getAttachment(attachment, callback) {
+  var attFile = attDir + attachment.eventId + '_' + attachment.fileName;
 
   if (fs.existsSync(attFile)) {
     console.log('Skipping: ' + attFile);
-    return done();
+    return callback();
   }
 
   var options = {
     host: connection.username + '.' + connection.settings.domain,
-    port: settings.port,
+    port: authSettings.port,
     path: '/events/' +
-      att.eventId + '/' + att.id + '?readToken=' + att.readToken
+    attachment.eventId + '/' + attachment.id + '?readToken=' + attachment.readToken
   };
-
-  //console.log(attFile, options.path);
 
   https.get(options, function (res) {
     var binData = '';
@@ -164,66 +249,17 @@ function getAttachment(att, done) {
 
     res.on('end', function () {
       fs.writeFile(attFile, binData, 'binary', function (err) {
-        if (err) { 
+        if (err) {
           console.log('Error while writing ' + attFile);
           throw err;
         }
         console.log('File saved.' + attFile);
-        done();
+        callback();
       });
     });
 
   }).on('error', function (e) {
     console.log('Error while fetching https://' + options.host + options.path, e);
-    done(e);
-  });
-
-
-}
-
-
-function parseEvents(done) {
-  console.log(eventsFile);
-  var events = JSON.parse(fs.readFileSync(eventsFile, 'utf8'));
-  var attachments = [];
-
-  events.events.forEach(function (event) {
-    if (event.attachments) {
-      event.attachments.forEach(function (att) {
-        if (att.id) {
-          att.eventId = event.id;
-          attachments.push(att);
-        } else {
-          console.log('att.id missing', event);
-        }
-      });
-    }
-  });
-
-  async.mapLimit(attachments, 10, getAttachment, function (error, res) {
-    if (error) {
-      console.log('################### ERROR', error, '#############');
-      return;
-    }
-
-    console.log('done');
-  }, function (err) {
-    done(err);
-  });
-}
-
-
-function apiToJSONFile(call, done) {
-  console.log('Fetching: ' + call);
-  connection.request({
-    method: 'GET',
-    path: '/' + call,
-    callback: function (error, result) {
-      if (error) {
-        console.log('Failed: ' + call);
-        return done(error);
-      }
-      saveToFile(call,  result, done);
-    }
+    callback(e);
   });
 }
