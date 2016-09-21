@@ -23,7 +23,7 @@ exports.toJSONFile = function (params, callback) {
       saveToFile(params.folder, params.resource, result, callback);
     }
   });
-}
+};
 
 /**
  * Saves the data to a JSON file under the name `resource.json` (spaces are converted to

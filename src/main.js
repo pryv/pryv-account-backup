@@ -8,7 +8,7 @@ var pryv = require('pryv'),
   attachments = require('./methods/attachments');
 
 /**
- * Downloads the user data in
+ * Downloads the user data in folder `./backup/username.domain/`
  *
  * @param params {object}
  *        params.username {string}
@@ -17,6 +17,7 @@ var pryv = require('pryv'),
  *        params.includeTrashed {boolean}
  *        params.includeAttachments {boolean}
  *        params.backupDirectory {backup-directory}
+ * @param callback {function}
  */
 exports.start = function (params, callback) {
 
