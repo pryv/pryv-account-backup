@@ -64,7 +64,7 @@ exports.start = function (params, callback) {
       var streamsRequest = 'streams';
       if (params.includeTrashed) {
         eventsRequest += '&state=all';
-        streamsRequest += '?&state=all';
+        streamsRequest += '?state=all';
       }
 
       async.mapSeries(['account', streamsRequest, 'accesses',
