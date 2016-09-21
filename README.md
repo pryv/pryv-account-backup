@@ -1,15 +1,19 @@
 # app-node-backup
-simple script to backup your own Pryv data
+Simple script to backup your Pryv data
 
-## Usage
+## Script Usage
 
-*Prerequisites:* Node
+*Prerequisites:* [Node](https://nodejs.org/en/)
+
+In your terminal, run the following commands:
 
 `npm install` to download required dependencies
 
 `npm start` to launch the backup script. This will ask you for the **domain**, **username** and **password** of the Pryv account you wish to back up
 
 ### Format
+
+Your data will be downloaded in `./backup/{username}.{domain}/`
 
 This downloads the following in JSON format:  
 * Public profile
@@ -22,7 +26,11 @@ This downloads the following in JSON format:
 As well as the following in binary files:
 * Attachment files
 
-### As a package
+### Running conditions
+
+The operation might take a while in case the data size is substantial. Please, leave requests [here](https://github.com/pryv/app-node-backup/issues)
+
+## As a package
 
 It is also possible use the backup function in your code.
 
