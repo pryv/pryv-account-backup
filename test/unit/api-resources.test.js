@@ -4,8 +4,7 @@ var api = require('../../src/methods/api-resources'),
     pryv = require('pryv'),
     credentials = require('../helpers/testuser').credentials,
     fs = require('fs'),
-    should = require('should'),
-    rmdir = require('rmdir');
+    should = require('should');
 
 describe('api-resources', function () {
 
