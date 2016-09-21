@@ -1,4 +1,7 @@
 # app-node-backup
+
+![dependencies Status](https://david-dm.org/pryv/app-node-backup.svg)
+
 Simple script to backup your Pryv data
 
 ## Script Usage
