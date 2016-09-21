@@ -19,18 +19,9 @@ describe('api-resources', function () {
 
     before(function (done) {
         connection = new pryv.Connection(credentials);
-        fs.mkdirSync(backupDir);
         params.folder = backupDir;
         params.connection = connection;
-        done();
-    });
-
-    after(function (done) {
-        if(fs.existsSync(backupDir)) {
-            rmdir(backupDir, function (err) {
-                done(err);
-            });
-        }
+        require('../helpers/setup-test-env')(backupDir,done);
     });
 
     it('should retrieve the requested Pryv resource and save it to JSON', function (done) {
