@@ -37,5 +37,8 @@ jspm_packages
 .node_repl_history
 app-node-backup.iml
 
+# intelliJ
 .idea/
-out/
+
+# backup folder
+backup/
