@@ -9,7 +9,8 @@ var api = require('../../src/methods/api-resources'),
 describe('api-resources', function () {
 
     var connection = null,
-        backupDir = './' + credentials.username + '.' + credentials.domain + '/',
+        baseDir = './backup/',
+        backupDir = baseDir + credentials.username + '.' + credentials.domain + '/',
         params = {
             folder: null,
             resource: null,
@@ -20,7 +21,15 @@ describe('api-resources', function () {
         connection = new pryv.Connection(credentials);
         params.folder = backupDir;
         params.connection = connection;
-        require('../helpers/setup-test-env')(backupDir,done);
+        require('../helpers/clear-backup-dir')(baseDir,function() {
+            fs.mkdirSync(baseDir);
+            fs.mkdirSync(backupDir);
+            done();
+        });
+    });
+
+    after(function (done) {
+        require('../helpers/clear-backup-dir')(baseDir,done);
     });
 
     it('should retrieve the requested Pryv resource and save it to JSON', function (done) {

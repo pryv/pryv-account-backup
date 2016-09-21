@@ -3,18 +3,7 @@
 var Directory = require('../../src/methods/backup-directory'),
     credentials = require('../helpers/testuser').credentials,
     fs = require('fs'),
-    should = require('should'),
-    rmdir = require('rmdir');
-
-function rmBackupDir(callback) {
-    if(fs.existsSync('./backup')) {
-        rmdir('./backup', function (err) {
-            callback(err);
-        });
-    } else {
-        callback();
-    }
-}
+    should = require('should');
 
 describe('backup-directory', function () {
 
@@ -22,11 +11,11 @@ describe('backup-directory', function () {
 
     before(function (done) {
         BackupDirectory = new Directory(credentials.username,credentials.domain);
-        rmBackupDir(done);
+        require('../helpers/clear-backup-dir')('./backup/',done);
     });
 
     after(function (done) {
-        rmBackupDir(done);
+        require('../helpers/clear-backup-dir')('./backup/',done);
     });
 
     it('should create the backup directories', function (done) {
