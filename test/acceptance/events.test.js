@@ -45,7 +45,7 @@ describe('Events', function () {
       {
         method: 'streams.delete',
         params: {
-          id: stream,
+          id: stream
         }
       },
       {
