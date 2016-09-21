@@ -1,13 +1,11 @@
 /*global describe, it, before, after */
 
-var pryv = require('pryv'),
-    async = require('async'),
-    inspect = require('util').inspect;
+var pryv = require('pryv');
 
 describe('Events', function () {
 
   var connection = null,
-      stream = 'testStream1';
+    stream = 'testStream1';
 
   before(function (done) {
 
@@ -29,11 +27,8 @@ describe('Events', function () {
           content: 'hi, i am a text event'
         }
       }
-    ], function (err, res) {
-      if (err) {
-        return done(err);
-      }
-      done();
+    ], function (err) {
+      done(err);
     });
 
   });
@@ -54,16 +49,13 @@ describe('Events', function () {
           mergeEventsWithParent: false
         }
       }
-    ], function (err, res) {
-      if (err) {
-        return done(err);
-      }
-      done();
+    ], function (err) {
+      done(err);
     })
   });
 
   it('should backup events in the right folder', function (done) {
-
+    console.log('todo');
     done();
   })
 
