@@ -4,6 +4,8 @@ var backup = require('../../src/main'),
 
 describe('file-structure', function () {
 
+  this.timeout(5000);
+
   it('should create the correct folder and files', function (done) {
 
     var settings = {

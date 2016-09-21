@@ -54,7 +54,7 @@ describe('Events', function () {
     })
   });
 
-  it('should backup events in the right folder', function (done) {
+  it.skip('should backup events in the right folder', function (done) {
     console.log('todo');
     done();
   })
