@@ -33,7 +33,6 @@ describe('Events', function () {
       if (err) {
         return done(err);
       }
-      console.log(res);
       done();
     });
 
@@ -45,7 +44,7 @@ describe('Events', function () {
       {
         method: 'streams.delete',
         params: {
-          id: stream,
+          id: stream
         }
       },
       {
@@ -59,15 +58,11 @@ describe('Events', function () {
       if (err) {
         return done(err);
       }
-      console.log(inspect(res, false, null));
       done();
     })
   });
 
   it('should backup events in the right folder', function (done) {
-
-
-
 
     done();
   })
