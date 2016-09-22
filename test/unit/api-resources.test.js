@@ -29,7 +29,7 @@ describe('api-resources', function () {
     });
 
     after(function (done) {
-        require('../helpers/clear-backup-dir')(baseDir,done);
+        //require('../helpers/clear-backup-dir')(baseDir,done);
     });
 
     it('should retrieve the requested Pryv resource and save it to JSON', function (done) {
