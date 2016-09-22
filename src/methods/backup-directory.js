@@ -1,4 +1,6 @@
 var mkdirp = require('mkdirp'),
+    fs = require('fs'),
+    rmdir = require('rmdir'),
     async = require('async');
 
 /**
@@ -55,3 +57,21 @@ BackupDirectory.prototype.createDirs = function (callback) {
     callback();
   });
 };
+
+/**
+ * Delete backup directories
+ * @param callback
+ */
+BackupDirectory.prototype.deleteDirs = function (callback) {
+
+  // TODO clean caller specification
+  var that = this;
+
+  if(fs.existsSync(that.baseDir)) {
+    rmdir(that.baseDir, function (err) {
+      callback(err);
+    });
+  } else {
+    callback();
+  }
+}

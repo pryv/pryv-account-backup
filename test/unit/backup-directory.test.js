@@ -11,11 +11,11 @@ describe('backup-directory', function () {
 
     before(function (done) {
         BackupDirectory = new Directory(credentials.username,credentials.domain);
-        require('../helpers/clear-backup-dir')('./backup/',done);
+        BackupDirectory.deleteDirs(done);
     });
 
     after(function (done) {
-        require('../helpers/clear-backup-dir')('./backup/',done);
+        BackupDirectory.deleteDirs(done);
     });
 
     it('should create the backup directories', function (done) {
@@ -24,8 +24,8 @@ describe('backup-directory', function () {
         should.exists(BackupDirectory.eventsFile);
         BackupDirectory.createDirs(function(err) {
             should.not.exists(err);
-            should.equal(fs.existsSync(BackupDirectory.baseDir),true);
-            should.equal(fs.existsSync(BackupDirectory.attachmentsDir),true);
+            fs.existsSync(BackupDirectory.baseDir).should.equal(true);
+            fs.existsSync(BackupDirectory.attachmentsDir).should.equal(true);
             done();
         });
     });

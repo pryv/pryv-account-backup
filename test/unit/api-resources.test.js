@@ -3,14 +3,15 @@
 var api = require('../../src/methods/api-resources'),
     pryv = require('pryv'),
     credentials = require('../helpers/testuser').credentials,
+    Directory = require('../../src/methods/backup-directory'),
     fs = require('fs'),
+    async = require('async'),
     should = require('should');
 
 describe('api-resources', function () {
 
     var connection = null,
-        baseDir = './backup/',
-        backupDir = baseDir + credentials.username + '.' + credentials.domain + '/',
+        BackupDirectory = null,
         params = {
             folder: null,
             resource: null,
@@ -19,17 +20,25 @@ describe('api-resources', function () {
 
     before(function (done) {
         connection = new pryv.Connection(credentials);
-        params.folder = backupDir;
+        BackupDirectory = new Directory(credentials.username,credentials.domain);
+        params.folder = BackupDirectory.baseDir;
         params.connection = connection;
-        require('../helpers/clear-backup-dir')(baseDir,function() {
-            fs.mkdirSync(baseDir);
-            fs.mkdirSync(backupDir);
+
+        async.series([
+            BackupDirectory.deleteDirs,
+            function create(stepDone) {
+                BackupDirectory.createDirs(stepDone);
+            }],
+            function (err) {
+            if (err) {
+                return done(err);
+            }
             done();
         });
     });
 
     after(function (done) {
-        //require('../helpers/clear-backup-dir')(baseDir,done);
+        BackupDirectory.deleteDirs(done);
     });
 
     it('should retrieve the requested Pryv resource and save it to JSON', function (done) {
@@ -45,7 +54,7 @@ describe('api-resources', function () {
 
         api.toJSONFile(params, function(err) {
             should.not.exist(err);
-            should.equal(fs.existsSync(backupDir+params.resource+'.json'),true);
+            fs.existsSync(params.folder+params.resource+'.json').should.equal(true);
             done();
         });
     });
@@ -56,7 +65,7 @@ describe('api-resources', function () {
 
         api.toJSONFile(params, function(err) {
             should.not.exist(err);
-            should.equal(fs.existsSync(backupDir+'events.json'),true);
+            fs.existsSync(params.folder+'events.json').should.equal(true);
             done();
         });
     });
@@ -67,7 +76,7 @@ describe('api-resources', function () {
 
         api.toJSONFile(params, function(err) {
             should.exist(err);
-            should.equal(fs.existsSync(backupDir+params.resource+'.json'),false);
+            fs.existsSync(params.folder+params.resource+'.json').should.equal(false);
             done();
         });
     });
