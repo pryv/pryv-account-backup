@@ -18,7 +18,7 @@ describe('backup-directory', function () {
         BackupDirectory.deleteDirs(done);
     });
 
-    it('should create the backup directories', function (done) {
+    it('should create and delete the backup directories', function (done) {
         should.exists(BackupDirectory.baseDir);
         should.exists(BackupDirectory.attachmentsDir);
         should.exists(BackupDirectory.eventsFile);
@@ -26,7 +26,13 @@ describe('backup-directory', function () {
             should.not.exists(err);
             fs.existsSync(BackupDirectory.baseDir).should.equal(true);
             fs.existsSync(BackupDirectory.attachmentsDir).should.equal(true);
-            done();
+            BackupDirectory.deleteDirs(function(err) {
+                should.not.exists(err);
+                fs.existsSync(BackupDirectory.baseDir).should.equal(false);
+                fs.existsSync(BackupDirectory.attachmentsDir).should.equal(false);
+                done();
+            });
         });
     });
+
 });
