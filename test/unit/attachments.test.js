@@ -17,11 +17,18 @@ describe('attachments', function () {
                 {
                     "attachments": [
                         {
-                            "id": "deede",
+                            "id": "citbmzlj9cjhc35yq7bscd7u5",
                             "fileName": "inception.jpg",
                             "type": "image/jpeg",
                             "size": 27810,
-                            "readToken": "dede-4DdVRubwrO4DrpEEaMhV9ZC6ETQ"
+                            "readToken": "cit9zsixicj2235yqs3fgmifr-4DdVRubwrO4DrpEEaMhV9ZC6ETQ"
+                        },
+                        {
+                            "id": "invalid",
+                            "fileName": "invalid.jpg",
+                            "type": "image/jpeg",
+                            "size": 27810,
+                            "readToken": "invalid"
                         }
                     ],
                     "content": null,
@@ -34,7 +41,7 @@ describe('attachments', function () {
                     "tags": [],
                     "time": 1467109533,
                     "type": "picture/attached",
-                    "id": "bla"
+                    "id": "citbmzlj8cjhb35yqxrbfhj5j"
                 }
             ],
             "meta": {
@@ -67,7 +74,7 @@ describe('attachments', function () {
         BackupDirectory.deleteDirs(done);
     });
 
-    it('should download and save the attachments', function (done) {
+    it('should download the attachments', function (done) {
         attachments.download(connection,BackupDirectory,function(err) {
             should.not.exists(err);
             var attachment = BackupDirectory.attachmentsDir + testEvent.events[0].id + '_' + testEvent.events[0].attachments[0].fileName;
@@ -75,4 +82,5 @@ describe('attachments', function () {
             done();
         });
     });
+    
 });
