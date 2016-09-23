@@ -26,6 +26,7 @@ describe('api-resources', function () {
 
         async.series([
             BackupDirectory.deleteDirs,
+            //BackupDirectory.createDirs,
             function create(stepDone) {
                 BackupDirectory.createDirs(stepDone);
             }],

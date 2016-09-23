@@ -5,24 +5,23 @@ var attachments = require('../../src/methods/attachments'),
     Directory = require('../../src/methods/backup-directory'),
     fs = require('fs'),
     pryv = require('pryv'),
-    should = require('should');
+    should = require('should'),
+    async = require('async');
 
 describe('attachments', function () {
 
     var connection = null,
         BackupDirectory = null,
-        baseDir = './backup/',
-        backupDir = baseDir + credentials.username + '.' + credentials.domain + '/',
         testEvent = {
             "events": [
                 {
                     "attachments": [
                         {
-                            "id": "citbmzlj9cjhc35yq7bscd7u5",
+                            "id": "deede",
                             "fileName": "inception.jpg",
                             "type": "image/jpeg",
                             "size": 27810,
-                            "readToken": "cit9zsixicj2235yqs3fgmifr-4DdVRubwrO4DrpEEaMhV9ZC6ETQ"
+                            "readToken": "dede-4DdVRubwrO4DrpEEaMhV9ZC6ETQ"
                         }
                     ],
                     "content": null,
@@ -35,7 +34,7 @@ describe('attachments', function () {
                     "tags": [],
                     "time": 1467109533,
                     "type": "picture/attached",
-                    "id": "citbmzlj8cjhb35yqxrbfhj5j"
+                    "id": "bla"
                 }
             ],
             "meta": {
@@ -46,20 +45,34 @@ describe('attachments', function () {
 
     before(function (done) {
         connection = new pryv.Connection(credentials);
-        require('../helpers/clear-backup-dir')(baseDir,function() {
-            BackupDirectory = new Directory(credentials.username,credentials.domain);
-            BackupDirectory.createDirs(fs.writeFile(BackupDirectory.eventsFile, JSON.stringify(testEvent, null, 4), done));
-        });
+        BackupDirectory = new Directory(credentials.username,credentials.domain);
+        async.series([
+                BackupDirectory.deleteDirs,
+                function create(stepDone) {
+                    BackupDirectory.createDirs(stepDone);
+                },
+                function createEventsFile(stepDone) {
+                    fs.writeFile(BackupDirectory.eventsFile, JSON.stringify(testEvent, null, 4), stepDone);
+                }
+            ],
+            function (err) {
+                if (err) {
+                    return done(err);
+                }
+                done();
+            });
     });
 
     after(function (done) {
-        require('../helpers/clear-backup-dir')(baseDir,done);
+        BackupDirectory.deleteDirs(done);
     });
 
-    it('should download the attachments', function (done) {
-
-        attachments.download(connection,BackupDirectory,function() {
-            // TODO
+    it('should download and save the attachments', function (done) {
+        attachments.download(connection,BackupDirectory,function(err) {
+            should.not.exists(err);
+            var attachment = BackupDirectory.attachmentsDir + testEvent.events[0].id + '_' + testEvent.events[0].attachments[0].fileName;
+            fs.existsSync(attachment).should.equal(true);
+            done();
         });
     });
 });
