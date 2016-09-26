@@ -1,8 +1,6 @@
 var pryv = require('pryv'),
   fs = require('fs'),
-  https = require('https'),
   async = require('async'),
-  read = require('read'),
   _ = require('lodash'),
   apiResources = require('./methods/api-resources'),
   attachments = require('./methods/attachments');
@@ -75,9 +73,7 @@ exports.start = function (params, callback) {
             resource: resource,
             connection: connection
           }, callback)
-        }, function (err) {
-          done(err);
-        });
+        }, done);
     },
     function fetchAttachments (stepDone) {
       if (params.includeAttachments) {

@@ -35,7 +35,7 @@ BackupDirectory.prototype.createDirs = function (callback) {
     function createBaseDir(stepDone) {
       mkdirp(that.baseDir, function (err) {
         if (err) {
-          console.error('Failed creating ' + that.baseDir, err);
+          console.error('Error while creating base dir: ' + that.baseDir, err);
           stepDone(err);
         }
         stepDone();
@@ -44,7 +44,7 @@ BackupDirectory.prototype.createDirs = function (callback) {
     function createAttachmentsDir(stepDone) {
       mkdirp(that.attachmentsDir, function (err) {
         if (err) {
-          console.error('Failed creating ' + that.attachmentsDir, err);
+          console.error('Error while creating attachments dir: ' + that.attachmentsDir, err);
           stepDone(err);
         }
         stepDone();

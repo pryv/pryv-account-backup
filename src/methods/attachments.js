@@ -21,7 +21,7 @@ exports.download = function (connection, backupDir, callback) {
           att.eventId = event.id;
           attachments.push(att);
         } else {
-          console.error('att.id missing', event);
+          console.error('Invalid event: att.id is missing: ', event);
         }
       });
     }
@@ -32,10 +32,10 @@ exports.download = function (connection, backupDir, callback) {
     getAttachment(connection, backupDir.attachmentsDir, item, callback);
   }, function (error) {
     if (error) {
-      console.error('################### ERROR', error, '#############');
+      console.error('Error while downloading the attachments: ' + error);
       return;
     }
-    console.log('done');
+    console.log('Download done');
     callback();
   });
 };
@@ -54,7 +54,7 @@ function getAttachment(connection, attachmentsDir, attachment, callback) {
   var attFile = attachmentsDir + attachment.eventId + '_' + attachment.fileName;
 
   if (fs.existsSync(attFile)) {
-    console.log('Skipping: ' + attFile);
+    console.log('Skipping already existing attachment: ' + attFile);
     return callback();
   }
 
@@ -76,10 +76,10 @@ function getAttachment(connection, attachmentsDir, attachment, callback) {
     res.on('end', function () {
       fs.writeFile(attFile, binData, 'binary', function (err) {
         if (err) {
-          console.log('Error while writing ' + attFile);
+          console.log('Error while writing attachment: ' + attFile);
           throw err;
         }
-        console.log('File saved.' + attFile);
+        console.log('Attachment saved: ' + attFile);
         callback();
       });
     });
