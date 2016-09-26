@@ -26,16 +26,9 @@ describe('api-resources', function () {
 
         async.series([
             BackupDirectory.deleteDirs,
-            //BackupDirectory.createDirs,
             function create(stepDone) {
                 BackupDirectory.createDirs(stepDone);
-            }],
-            function (err) {
-            if (err) {
-                return done(err);
-            }
-            done();
-        });
+            }], done);
     });
 
     after(function (done) {

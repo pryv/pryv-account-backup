@@ -50,12 +50,7 @@ BackupDirectory.prototype.createDirs = function (callback) {
         stepDone();
       });
     }
-  ], function (err) {
-    if (err) {
-      return callback(err);
-    }
-    callback();
-  });
+  ], callback);
 };
 
 /**
@@ -68,9 +63,7 @@ BackupDirectory.prototype.deleteDirs = function (callback) {
   var that = this;
 
   if(fs.existsSync(that.baseDir)) {
-    rmdir(that.baseDir, function (err) {
-      callback(err);
-    });
+    rmdir(that.baseDir, callback);
   } else {
     callback();
   }

@@ -25,22 +25,16 @@ describe('attachments', function () {
                 function createEventsFile(stepDone) {
                     var params = {
                         folder: BackupDirectory.baseDir,
-                        resource: 'events?fromTime=-2350373077&toTime=' + new Date() / 1000 + '&state=all',
+                        resource: 'events',
                         connection: connection
                     };
                     api.toJSONFile(params, stepDone);
                 }
-            ],
-            function (err) {
-                if (err) {
-                    return done(err);
-                }
-                done();
-            });
+            ], done);
     });
 
     after(function (done) {
-       BackupDirectory.deleteDirs(done);
+        BackupDirectory.deleteDirs(done);
     });
 
     it('should download the attachments', function (done) {
