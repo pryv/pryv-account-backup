@@ -1,7 +1,6 @@
 # app-node-backup
 
-![Build Status](https://travis-ci.org/pryv/app-node-backup.svg?branch=master)
-![dependencies Status](https://david-dm.org/pryv/app-node-backup.svg)
+[![Build Status](https://travis-ci.org/pryv/app-node-backup.svg?branch=master)](https://travis-ci.org/pryv/app-node-backup)
 
 Simple script to backup your Pryv data
 
