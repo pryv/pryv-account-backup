@@ -27,29 +27,25 @@ var BackupDirectory = module.exports = function (username, domain) {
  * @param callback
  */
 BackupDirectory.prototype.createDirs = function (callback) {
-
-  // TODO clean caller specification
-  var that = this;
-
   async.series([
     function createBaseDir(stepDone) {
-      mkdirp(that.baseDir, function (err) {
+      mkdirp(this.baseDir, function (err) {
         if (err) {
-          console.error('Error while creating base dir: ' + that.baseDir, err);
+          console.error('Error while creating base dir: ' + this.baseDir, err);
           stepDone(err);
         }
         stepDone();
       });
-    },
+    }.bind(this),
     function createAttachmentsDir(stepDone) {
-      mkdirp(that.attachmentsDir, function (err) {
+      mkdirp(this.attachmentsDir, function (err) {
         if (err) {
-          console.error('Error while creating attachments dir: ' + that.attachmentsDir, err);
+          console.error('Error while creating attachments dir: ' + this.attachmentsDir, err);
           stepDone(err);
         }
         stepDone();
-      });
-    }
+      }.bind(this));
+    }.bind(this)
   ], callback);
 };
 
@@ -58,13 +54,9 @@ BackupDirectory.prototype.createDirs = function (callback) {
  * @param callback
  */
 BackupDirectory.prototype.deleteDirs = function (callback) {
-
-  // TODO clean caller specification
-  var that = this;
-
-  if(fs.existsSync(that.baseDir)) {
-    rmdir(that.baseDir, callback);
+  if(fs.existsSync(this.baseDir)) {
+    rmdir(this.baseDir, callback);
   } else {
     callback();
   }
-}
+};
