@@ -2,6 +2,7 @@
 
 var attachments = require('../../src/methods/attachments'),
     credentials = require('../helpers/testuser').credentials,
+    api = require('../../src/methods/api-resources'),
     Directory = require('../../src/methods/backup-directory'),
     fs = require('fs'),
     pryv = require('pryv'),
@@ -11,44 +12,7 @@ var attachments = require('../../src/methods/attachments'),
 describe('attachments', function () {
 
     var connection = null,
-        BackupDirectory = null,
-        testEvent = {
-            "events": [
-                {
-                    "attachments": [
-                        {
-                            "id": "citbmzlj9cjhc35yq7bscd7u5",
-                            "fileName": "inception.jpg",
-                            "type": "image/jpeg",
-                            "size": 27810,
-                            "readToken": "cit9zsixicj2235yqs3fgmifr-4DdVRubwrO4DrpEEaMhV9ZC6ETQ"
-                        },
-                        {
-                            "id": "invalid",
-                            "fileName": "invalid.jpg",
-                            "type": "image/jpeg",
-                            "size": 27810,
-                            "readToken": "invalid"
-                        }
-                    ],
-                    "content": null,
-                    "created": 1474385381.827,
-                    "createdBy": "citbmxirkcjh635yqjl42xag3",
-                    "description": "",
-                    "modified": 1474385381.827,
-                    "modifiedBy": "citbmxirkcjh635yqjl42xag3",
-                    "streamId": "citbmz663cjh835yq04xgitpl",
-                    "tags": [],
-                    "time": 1467109533,
-                    "type": "picture/attached",
-                    "id": "citbmzlj8cjhb35yqxrbfhj5j"
-                }
-            ],
-            "meta": {
-                "apiVersion": "1.1.2",
-                "serverTime": 1474548745.049
-            }
-        };
+        BackupDirectory = null;
 
     before(function (done) {
         connection = new pryv.Connection(credentials);
@@ -59,7 +23,12 @@ describe('attachments', function () {
                     BackupDirectory.createDirs(stepDone);
                 },
                 function createEventsFile(stepDone) {
-                    fs.writeFile(BackupDirectory.eventsFile, JSON.stringify(testEvent, null, 4), stepDone);
+                    var params = {
+                        folder: BackupDirectory.baseDir,
+                        resource: 'events?fromTime=-2350373077&toTime=' + new Date() / 1000 + '&state=all',
+                        connection: connection
+                    };
+                    api.toJSONFile(params, stepDone);
                 }
             ],
             function (err) {
@@ -71,16 +40,26 @@ describe('attachments', function () {
     });
 
     after(function (done) {
-        BackupDirectory.deleteDirs(done);
+       BackupDirectory.deleteDirs(done);
     });
 
     it('should download the attachments', function (done) {
         attachments.download(connection,BackupDirectory,function(err) {
+
             should.not.exists(err);
-            var attachment = BackupDirectory.attachmentsDir + testEvent.events[0].id + '_' + testEvent.events[0].attachments[0].fileName;
-            fs.existsSync(attachment).should.equal(true);
+
+            var events = JSON.parse(fs.readFileSync(BackupDirectory.eventsFile, 'utf8'));
+            events.events.forEach(function (event) {
+                if (event.attachments) {
+                    event.attachments.forEach(function (att) {
+                        var attFile = BackupDirectory.attachmentsDir + event.id + '_' + att.fileName;
+                        fs.existsSync(attFile).should.equal(true);
+                    });
+                }
+            });
+
             done();
         });
     });
-    
+
 });

@@ -44,13 +44,6 @@ describe('api-resources', function () {
 
     it('should retrieve the requested Pryv resource and save it to JSON', function (done) {
 
-        var eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000;
-        var streamsRequest = 'streams';
-        if (params.includeTrashed) {
-            eventsRequest += '&state=all';
-            streamsRequest += '?state=all';
-        }
-
         params.resource = 'streams';
 
         api.toJSONFile(params, function(err) {
