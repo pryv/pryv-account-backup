@@ -10,6 +10,8 @@ var backup = require('../../src/main'),
 
 describe('backup', function () {
 
+  this.timeout(10000);
+
   var settings = null,
       resources = null,
       connection = null;
