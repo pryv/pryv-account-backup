@@ -1,6 +1,7 @@
 # app-node-backup
 
 [![Build Status](https://travis-ci.org/pryv/app-node-backup.svg?branch=master)](https://travis-ci.org/pryv/app-node-backup)
+[![Coverage Status](https://coveralls.io/repos/github/pryv/app-node-backup/badge.svg?branch=master)](https://coveralls.io/github/pryv/app-node-backup?branch=master)
 
 Simple script to backup your Pryv data
 
