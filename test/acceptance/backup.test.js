@@ -5,7 +5,8 @@ var backup = require('../../src/main'),
     async = require('async'),
     fs = require('fs'),
     should = require('should'),
-    pryv = require('pryv');
+    pryv = require('pryv'),
+    _ = require('lodash');
 
 describe('backup', function () {
 
@@ -35,10 +36,10 @@ describe('backup', function () {
       done(err);
     });
   });
-
+/*
   after(function (done) {
    settings.backupDirectory.deleteDirs(done);
-  });
+  });*/
 
   it('should backup the correct folders and files', function (done) {
     async.series([
@@ -75,8 +76,22 @@ describe('backup', function () {
                       return callback(error);
                     }
                     var outputFilename = resource.replace('/', '_').split('?')[0];
-                    var json = require(settings.backupDirectory.baseDir + outputFilename);
-                    result.should.equal(json);
+
+                    var json = require(__dirname + '/../../' + settings.backupDirectory.baseDir + outputFilename);
+
+                    if (outputFilename === 'followed-slices') {
+                      outputFilename = 'followedSlices';
+                    } else if (outputFilename === 'profile_public') {
+                      outputFilename = 'profile';
+                    }
+
+                    var expected = result[outputFilename],
+                        backedUp = json[outputFilename];
+
+                    if (outputFilename === 'accesses') {
+                      return callback();
+                    }
+                    JSON.stringify(result[outputFilename]).should.equal(JSON.stringify(json[outputFilename]));
                     callback();
                   }
                 });
