@@ -1,27 +1,34 @@
 /*global describe, it, before, after */
 
 var backup = require('../../src/main'),
-    testUser = require('../helpers/testuser'),
+    credentials = require('../helpers/testuser').credentials,
     async = require('async'),
     fs = require('fs'),
-    should = require('should');
+    should = require('should'),
+    pryv = require('pryv');
 
 describe('backup', function () {
 
   var settings = null,
-      resources = null;
+      resources = null,
+      connection = null;
 
   before(function (done) {
     settings = {
-      username: testUser.credentials.username,
-      domain: testUser.credentials.domain,
-      password: testUser.credentials.password,
+      username: credentials.username,
+      domain: credentials.domain,
+      password: credentials.password,
       includeTrashed: true,
       includeAttachments: true
     };
 
     settings.backupDirectory = new backup.Directory(settings.username, settings.domain);
-    resources = ['account', 'streams', 'accesses', 'followed-slices', 'profile_public', 'events'];
+    var eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000 + '&state=all';
+    var streamsRequest = 'streams?state=all';
+    resources = ['account', streamsRequest, 'accesses', 'followed-slices', 'profile/public', eventsRequest];
+
+    connection = new pryv.Connection(credentials);
+
     done();
   });
 
@@ -29,14 +36,15 @@ describe('backup', function () {
     settings.backupDirectory.deleteDirs(done);
   });
 
-  it('should backup the correct folder and files', function (done) {
+  it('should backup the correct folders and files', function (done) {
     async.series([
         function startBackup(stepDone) {
           backup.start(settings, stepDone);
         },
         function checkFiles(stepDone) {
           resources.forEach(function(resource){
-            fs.existsSync(settings.backupDirectory.baseDir + resource +'.json').should.equal(true);
+            var outputFilename = resource.replace('/', '_').split('?')[0] + '.json';
+            fs.existsSync(settings.backupDirectory.baseDir + outputFilename).should.equal(true);
           });
           stepDone();
         },
@@ -51,6 +59,23 @@ describe('backup', function () {
             }
           });
           stepDone();
+        },
+        function checkContent(stepDone) {
+          async.mapSeries(resources,
+              function (resource, callback) {
+                connection.request({
+                  method: 'GET',
+                  path: '/' + resource,
+                  callback: function (error, result) {
+                    if(error) {
+                      return callback(error);
+                    }
+                    var outputFilename = resource.replace('/', '_').split('?')[0];
+                    result.should.equal(require(settings.backupDirectory.baseDir + outputFilename));
+                  }
+                });
+                callback();
+              }, stepDone);
         }
     ], function(err) {
       should.not.exist(err);
