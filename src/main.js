@@ -1,8 +1,6 @@
 var pryv = require('pryv'),
   fs = require('fs'),
-  https = require('https'),
   async = require('async'),
-  read = require('read'),
   _ = require('lodash'),
   apiResources = require('./methods/api-resources'),
   attachments = require('./methods/attachments');
@@ -65,7 +63,7 @@ exports.start = function (params, callback) {
       var streamsRequest = 'streams';
       if (params.includeTrashed) {
         eventsRequest += '&state=all';
-        streamsRequest += '?&state=all';
+        streamsRequest += '?state=all';
       }
 
       async.mapSeries(['account', streamsRequest, 'accesses',
@@ -76,9 +74,7 @@ exports.start = function (params, callback) {
             resource: resource,
             connection: connection
           }, callback)
-        }, function (err) {
-          done(err);
-        });
+        }, done);
     },
     function fetchAttachments (stepDone) {
       if (params.includeAttachments) {

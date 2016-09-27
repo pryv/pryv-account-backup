@@ -1,4 +1,6 @@
 var mkdirp = require('mkdirp'),
+    fs = require('fs'),
+    rmdir = require('rmdir'),
     async = require('async');
 
 /**
@@ -25,33 +27,36 @@ var BackupDirectory = module.exports = function (username, domain) {
  * @param callback
  */
 BackupDirectory.prototype.createDirs = function (callback) {
-
-  // TODO clean caller specification
-  var that = this;
-
   async.series([
     function createBaseDir(stepDone) {
-      mkdirp(that.baseDir, function (err) {
+      mkdirp(this.baseDir, function (err) {
         if (err) {
-          console.error('Failed creating ' + that.baseDir, err);
+          console.error('Error while creating base dir: ' + this.baseDir, err);
           stepDone(err);
         }
         stepDone();
       });
-    },
+    }.bind(this),
     function createAttachmentsDir(stepDone) {
-      mkdirp(that.attachmentsDir, function (err) {
+      mkdirp(this.attachmentsDir, function (err) {
         if (err) {
-          console.error('Failed creating ' + that.attachmentsDir, err);
+          console.error('Error while creating attachments dir: ' + this.attachmentsDir, err);
           stepDone(err);
         }
         stepDone();
-      });
-    }
-  ], function (err) {
-    if (err) {
-      return callback(err);
-    }
+      }.bind(this));
+    }.bind(this)
+  ], callback);
+};
+
+/**
+ * Delete backup directories
+ * @param callback
+ */
+BackupDirectory.prototype.deleteDirs = function (callback) {
+  if(fs.existsSync(this.baseDir)) {
+    rmdir(this.baseDir, callback);
+  } else {
     callback();
-  });
+  }
 };
