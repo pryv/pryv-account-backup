@@ -6,7 +6,7 @@ var backup = require('../../src/main'),
     fs = require('fs'),
     should = require('should');
 
-describe('file-structure', function () {
+describe('backup', function () {
 
   var settings = null,
       resources = null;
@@ -29,7 +29,7 @@ describe('file-structure', function () {
     settings.backupDirectory.deleteDirs(done);
   });
 
-  it('should create the correct folder and files', function (done) {
+  it('should backup the correct folder and files', function (done) {
     async.series([
         function startBackup(stepDone) {
           backup.start(settings, stepDone);
