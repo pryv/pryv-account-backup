@@ -36,10 +36,10 @@ describe('backup', function () {
       done(err);
     });
   });
-/*
+
   after(function (done) {
    settings.backupDirectory.deleteDirs(done);
-  });*/
+  });
 
   it('should backup the correct folders and files', function (done) {
     async.series([
