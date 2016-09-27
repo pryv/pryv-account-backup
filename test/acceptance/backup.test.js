@@ -61,7 +61,7 @@ describe('backup', function () {
           stepDone();
         },
         function checkContent(stepDone) {
-          async.mapSeries(resources,
+          async.each(resources,
               function (resource, callback) {
                 connection.request({
                   method: 'GET',
@@ -72,9 +72,9 @@ describe('backup', function () {
                     }
                     var outputFilename = resource.replace('/', '_').split('?')[0];
                     result.should.equal(require(settings.backupDirectory.baseDir + outputFilename));
+                    callback();
                   }
                 });
-                callback();
               }, stepDone);
         }
     ], function(err) {
