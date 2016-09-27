@@ -5,7 +5,8 @@ var backup = require('../../src/main'),
     async = require('async'),
     fs = require('fs'),
     should = require('should'),
-    pryv = require('pryv');
+    pryv = require('pryv'),
+    _ = require('lodash');
 
 describe('backup', function () {
 
@@ -19,22 +20,26 @@ describe('backup', function () {
       domain: credentials.domain,
       password: credentials.password,
       includeTrashed: true,
-      includeAttachments: true
+      includeAttachments: true,
+      appId: 'pryv-backup'
     };
 
+    settings.origin = 'https://sw.' + settings.domain;
     settings.backupDirectory = new backup.Directory(settings.username, settings.domain);
+
     var eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000 + '&state=all';
     var streamsRequest = 'streams?state=all';
     resources = ['account', streamsRequest, 'accesses', 'followed-slices', 'profile/public', eventsRequest];
 
-    connection = new pryv.Connection(credentials);
-
-    done();
+    pryv.Connection.login(settings, function (err, conn) {
+      connection = conn;
+      done(err);
+    });
   });
-
+/*
   after(function (done) {
-    settings.backupDirectory.deleteDirs(done);
-  });
+   settings.backupDirectory.deleteDirs(done);
+  });*/
 
   it('should backup the correct folders and files', function (done) {
     async.series([
@@ -71,7 +76,22 @@ describe('backup', function () {
                       return callback(error);
                     }
                     var outputFilename = resource.replace('/', '_').split('?')[0];
-                    result.should.equal(require(settings.backupDirectory.baseDir + outputFilename));
+
+                    var json = require(__dirname + '/../../' + settings.backupDirectory.baseDir + outputFilename);
+
+                    if (outputFilename === 'followed-slices') {
+                      outputFilename = 'followedSlices';
+                    } else if (outputFilename === 'profile_public') {
+                      outputFilename = 'profile';
+                    }
+
+                    var expected = result[outputFilename],
+                        backedUp = json[outputFilename];
+
+                    if (outputFilename === 'accesses') {
+                      return callback();
+                    }
+                    JSON.stringify(result[outputFilename]).should.equal(JSON.stringify(json[outputFilename]));
                     callback();
                   }
                 });
