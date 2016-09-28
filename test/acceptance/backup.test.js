@@ -5,8 +5,7 @@ var backup = require('../../src/main'),
     async = require('async'),
     fs = require('fs'),
     should = require('should'),
-    pryv = require('pryv'),
-    _ = require('lodash');
+    pryv = require('pryv');
 
 describe('backup', function () {
 
