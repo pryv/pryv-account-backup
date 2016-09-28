@@ -9,7 +9,6 @@ var backup = require('../../src/main'),
     _ = require('lodash');
 
 describe('backup', function () {
-
   var settings = null,
       resources = null,
       connection = null;
@@ -29,7 +28,7 @@ describe('backup', function () {
 
     var eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000 + '&state=all';
     var streamsRequest = 'streams?state=all';
-    resources = ['account', streamsRequest, 'accesses', 'followed-slices', 'profile/public', eventsRequest];
+    resources = ['account', streamsRequest, 'followed-slices', 'profile/public', eventsRequest];
 
     pryv.Connection.login(settings, function (err, conn) {
       connection = conn;
@@ -75,9 +74,9 @@ describe('backup', function () {
                     if(error) {
                       return callback(error);
                     }
-                    var outputFilename = resource.replace('/', '_').split('?')[0];
 
-                    var json = require(__dirname + '/../../' + settings.backupDirectory.baseDir + outputFilename);
+                    var outputFilename = resource.replace('/', '_').split('?')[0];
+                    var json = JSON.parse(fs.readFileSync(settings.backupDirectory.baseDir + outputFilename + '.json', 'utf8'));
 
                     if (outputFilename === 'followed-slices') {
                       outputFilename = 'followedSlices';
@@ -85,12 +84,6 @@ describe('backup', function () {
                       outputFilename = 'profile';
                     }
 
-                    var expected = result[outputFilename],
-                        backedUp = json[outputFilename];
-
-                    if (outputFilename === 'accesses') {
-                      return callback();
-                    }
                     JSON.stringify(result[outputFilename]).should.equal(JSON.stringify(json[outputFilename]));
                     callback();
                   }
