@@ -9,6 +9,9 @@ var backup = require('../../src/main'),
     _ = require('lodash');
 
 describe('backup', function () {
+
+  this.timeout(10000);
+
   var settings = null,
       resources = null,
       connection = null;
