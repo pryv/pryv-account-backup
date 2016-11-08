@@ -1,13 +1,14 @@
 {
   "name": "backup-node",
   "description": "Backup your Pryv account",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "keywords": [
     "Pryv",
     "hooks",
     "sandbox"
   ],
+  "main": "src/main.js",
   "repository": {
     "type": "git",
     "url": "https://github.com/pryv/app-node-backup"
@@ -42,5 +43,6 @@
     "istanbul": "^0.4.5",
     "mocha": "^3.0.2",
     "should": "^11.1.0"
-  }
+  },
+  "license": "BSD-3-Clause"
 }

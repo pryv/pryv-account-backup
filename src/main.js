@@ -5,23 +5,8 @@ var pryv = require('pryv'),
   apiResources = require('./methods/api-resources'),
   attachments = require('./methods/attachments');
 
-/**
- * Downloads the user data in folder `./backup/username.domain/`
- *
- * @param params {object}
- *        params.username {string}
- *        params.password {string}
- *        params.domain {string}
- *        params.includeTrashed {boolean}
- *        params.includeAttachments {boolean}
- *        params.backupDirectory {backup-directory}
- * @param callback {function}
- */
-exports.start = function (params, callback) {
 
-  var backupDirectory = params.backupDirectory,
-    connection = null;
-
+exports.signInToPryv = function (params, callback) {
   params = _.extend({
     appId: 'pryv-backup',
     username: null,
@@ -35,21 +20,43 @@ exports.start = function (params, callback) {
 
   params.origin = 'https://sw.' + params.domain;
 
+  console.log('Connecting to ' + params.username + '.' + params.domain);
+
+  pryv.Connection.login(params, callback);
+}
+
+
+/**
+ * Downloads the user data in folder `./backup/username.domain/`
+ *
+ * @param params {object}
+ *        params.username {string}
+ *        params.password {string}
+ *        params.domain {string}
+ *        params.includeTrashed {boolean}
+ *        params.includeAttachments {boolean}
+ *        params.backupDirectory {backup-directory}
+ * @param callback {function}
+ */
+exports.start = function (params, callback) {
+  exports.signInToPryv(params, function(err, conn) {
+    if (err) {
+      console.log('Connection failed with Error:', err);
+      return callback(err);
+    }
+    exports.startOnConnection(conn, params, callback);
+  });
+};
+
+exports.startOnConnection = function (connection, params, callback) {
+
+  var backupDirectory = params.backupDirectory;
+
+
+
   async.series([
     function createDirectoryTree(done) {
       backupDirectory.createDirs(done);
-    },
-    function signInToPryv(done) {
-      console.log('Connecting to ' + params.username + '.' + params.domain);
-
-      pryv.Connection.login(params, function (err, conn) {
-        if (err) {
-          console.log('Connection failed with Error:', err);
-          return done(err);
-        }
-        connection = conn;
-        done();
-      });
     },
     function fetchData (done) {
       console.log('Starting Backup');
