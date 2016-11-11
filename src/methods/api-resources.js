@@ -10,17 +10,17 @@ var fs = require('fs');
  *        params.baseDir {string} directory containing user backup data
  * @param callback
  */
-exports.toJSONFile = function (params, callback) {
-  console.log('Fetching: ' + params.resource);
+exports.toJSONFile = function (params, log, callback) {
+  log('Fetching: ' + params.resource);
   params.connection.request({
     method: 'GET',
     path: '/' + params.resource,
     callback: function (error, result) {
       if (error) {
-        console.log('Failure while fetching: ' + params.resource);
+        log('Failure while fetching: ' + params.resource);
         return callback(error);
       }
-      saveToFile(params.folder, params.resource, result, callback);
+      saveToFile(params.folder, params.resource, result, log, callback);
     }
   });
 };
@@ -34,14 +34,14 @@ exports.toJSONFile = function (params, callback) {
  * @param jsonData
  * @param callback
  */
-function saveToFile(baseDir, resourceName, jsonData, callback) {
-  console.log('Saving ' + resourceName + ' to folder: ', baseDir);
+function saveToFile(baseDir, resourceName, jsonData, log, callback) {
+  log('Saving ' + resourceName + ' to folder: ', baseDir);
   var outputFilename = resourceName.replace('/', '_').split('?')[0] + '.json';
   fs.writeFile(baseDir + outputFilename, JSON.stringify(jsonData, null, 4), function (err) {
     if (err) {
-      console.error('Error while saving: ' + err);
+      log('Error while saving: ' + err);
     } else {
-      console.log('JSON saved to: ' + baseDir + outputFilename);
+      log('JSON saved to: ' + baseDir + outputFilename);
     }
     callback(err);
   });
