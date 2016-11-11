@@ -48,10 +48,13 @@ exports.start = function (params, callback) {
   });
 };
 
-exports.startOnConnection = function (connection, params, callback, stdout) {
+exports.startOnConnection = function (connection, params, callback, log) {
 
-  var backupDirectory = params.backupDirectory,
-      log = stdout ? stdout : console.log;
+  var backupDirectory = params.backupDirectory;
+
+  if (!log) {
+    log = console.log;
+  }
 
   async.series([
     function createDirectoryTree(done) {
@@ -79,12 +82,12 @@ exports.startOnConnection = function (connection, params, callback, stdout) {
             folder: backupDirectory.baseDir,
             resource: resource,
             connection: connection
-          }, log, callback)
+          }, callback, log)
         }, done);
     },
     function fetchAttachments (stepDone) {
       if (params.includeAttachments) {
-        attachments.download(connection, backupDirectory, log, stepDone);
+        attachments.download(connection, backupDirectory, stepDone, log);
       } else {
         log('Skipping attachments');
         stepDone();

@@ -9,7 +9,10 @@ var async = require('async'),
  * @param backupDir {backup-directory}
  * @param callback
  */
-exports.download = function (connection, backupDir, log, callback) {
+exports.download = function (connection, backupDir, callback, log) {
+  if (!log) {
+    log = console.log;
+  }
   var events = JSON.parse(fs.readFileSync(backupDir.eventsFile, 'utf8'));
   var attachments = [];
   log('Start attachments download.');
@@ -29,7 +32,7 @@ exports.download = function (connection, backupDir, log, callback) {
 
   // Download attachment files in 10 parralel calls
   async.mapLimit(attachments, 10, function (item, callback) {
-    getAttachment(connection, backupDir.attachmentsDir, item, log, callback);
+    getAttachment(connection, backupDir.attachmentsDir, item, callback, log);
   }, function (error) {
     if (error) {
       log('Error while downloading the attachments: ' + error);
@@ -50,7 +53,7 @@ exports.download = function (connection, backupDir, log, callback) {
  * @param attachment
  * @param callback
  */
-function getAttachment(connection, attachmentsDir, attachment, log, callback) {
+function getAttachment(connection, attachmentsDir, attachment, callback, log) {
   var attFile = attachmentsDir + attachment.eventId + '_' + attachment.fileName;
 
   if (fs.existsSync(attFile)) {

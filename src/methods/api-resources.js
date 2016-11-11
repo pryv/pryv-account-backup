@@ -10,7 +10,10 @@ var fs = require('fs');
  *        params.baseDir {string} directory containing user backup data
  * @param callback
  */
-exports.toJSONFile = function (params, log, callback) {
+exports.toJSONFile = function (params, callback, log) {
+  if (!log) {
+    log = console.log;
+  }
   log('Fetching: ' + params.resource);
   params.connection.request({
     method: 'GET',
@@ -20,7 +23,7 @@ exports.toJSONFile = function (params, log, callback) {
         log('Failure while fetching: ' + params.resource);
         return callback(error);
       }
-      saveToFile(params.folder, params.resource, result, log, callback);
+      saveToFile(params.folder, params.resource, result, callback, log);
     }
   });
 };
@@ -34,7 +37,10 @@ exports.toJSONFile = function (params, log, callback) {
  * @param jsonData
  * @param callback
  */
-function saveToFile(baseDir, resourceName, jsonData, log, callback) {
+function saveToFile(baseDir, resourceName, jsonData, callback, log) {
+  if (!log) {
+    log = console.log;
+  }
   log('Saving ' + resourceName + ' to folder: ', baseDir);
   var outputFilename = resourceName.replace('/', '_').split('?')[0] + '.json';
   fs.writeFile(baseDir + outputFilename, JSON.stringify(jsonData, null, 4), function (err) {
