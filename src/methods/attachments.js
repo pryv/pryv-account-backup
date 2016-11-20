@@ -24,7 +24,7 @@ exports.download = function (connection, backupDir, callback, log) {
           att.eventId = event.id;
           attachments.push(att);
         } else {
-          log('Invalid event: att.id is missing: ', event);
+          log('Invalid event: att.id is missing: ' + event);
         }
       });
     }
@@ -88,7 +88,7 @@ function getAttachment(connection, attachmentsDir, attachment, callback, log) {
     });
 
   }).on('error', function (e) {
-    log('Error while fetching https://' + options.host + options.path, e);
+    log('Error while fetching https://' + options.host + options.path);
     callback(e);
   });
 }

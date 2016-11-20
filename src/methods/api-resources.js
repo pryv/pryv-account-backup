@@ -41,7 +41,7 @@ function saveToFile(baseDir, resourceName, jsonData, callback, log) {
   if (!log) {
     log = console.log;
   }
-  log('Saving ' + resourceName + ' to folder: ', baseDir);
+  log('Saving ' + resourceName + ' to folder: ' + baseDir);
   var outputFilename = resourceName.replace('/', '_').split('?')[0] + '.json';
   fs.writeFile(baseDir + outputFilename, JSON.stringify(jsonData, null, 4), function (err) {
     if (err) {
