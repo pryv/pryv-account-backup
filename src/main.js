@@ -95,7 +95,7 @@ exports.startOnConnection = function (connection, params, callback, log) {
     }
   ], function (err) {
     if (err) {
-      log('Failed in process with error', err);
+      log('Failed in process with error' + err);
       return callback(err);
     }
     callback();
