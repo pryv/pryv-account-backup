@@ -48,18 +48,20 @@ exports.start = function (params, callback) {
   });
 };
 
-exports.startOnConnection = function (connection, params, callback) {
+exports.startOnConnection = function (connection, params, callback, log) {
 
   var backupDirectory = params.backupDirectory;
 
-
+  if (!log) {
+    log = console.log;
+  }
 
   async.series([
     function createDirectoryTree(done) {
       backupDirectory.createDirs(done);
     },
     function fetchData (done) {
-      console.log('Starting Backup');
+      log('Starting Backup');
 
       // TODO we skip all data if events are skipped - need more granularity
       if (fs.existsSync(backupDirectory.eventsFile)) { // skip
@@ -80,20 +82,20 @@ exports.startOnConnection = function (connection, params, callback) {
             folder: backupDirectory.baseDir,
             resource: resource,
             connection: connection
-          }, callback)
+          }, callback, log)
         }, done);
     },
     function fetchAttachments (stepDone) {
       if (params.includeAttachments) {
-        attachments.download(connection, backupDirectory, stepDone);
+        attachments.download(connection, backupDirectory, stepDone, log);
       } else {
-        console.log('skipping attachments');
+        log('Skipping attachments');
         stepDone();
       }
     }
   ], function (err) {
     if (err) {
-      console.error('Failed in process with error', err);
+      log('Failed in process with error' + err);
       return callback(err);
     }
     callback();

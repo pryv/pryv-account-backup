@@ -9,10 +9,13 @@ var async = require('async'),
  * @param backupDir {backup-directory}
  * @param callback
  */
-exports.download = function (connection, backupDir, callback) {
+exports.download = function (connection, backupDir, callback, log) {
+  if (!log) {
+    log = console.log;
+  }
   var events = JSON.parse(fs.readFileSync(backupDir.eventsFile, 'utf8'));
   var attachments = [];
-
+  log('Start attachments download.');
   // gather attachments
   events.events.forEach(function (event) {
     if (event.attachments) {
@@ -21,7 +24,7 @@ exports.download = function (connection, backupDir, callback) {
           att.eventId = event.id;
           attachments.push(att);
         } else {
-          console.error('Invalid event: att.id is missing: ', event);
+          log('Invalid event: att.id is missing: ' + event);
         }
       });
     }
@@ -29,13 +32,13 @@ exports.download = function (connection, backupDir, callback) {
 
   // Download attachment files in 10 parralel calls
   async.mapLimit(attachments, 10, function (item, callback) {
-    getAttachment(connection, backupDir.attachmentsDir, item, callback);
+    getAttachment(connection, backupDir.attachmentsDir, item, callback, log);
   }, function (error) {
     if (error) {
-      console.error('Error while downloading the attachments: ' + error);
+      log('Error while downloading the attachments: ' + error);
       return;
     }
-    console.log('Download done');
+    log('Download done');
     callback();
   });
 };
@@ -50,11 +53,11 @@ exports.download = function (connection, backupDir, callback) {
  * @param attachment
  * @param callback
  */
-function getAttachment(connection, attachmentsDir, attachment, callback) {
+function getAttachment(connection, attachmentsDir, attachment, callback, log) {
   var attFile = attachmentsDir + attachment.eventId + '_' + attachment.fileName;
 
   if (fs.existsSync(attFile)) {
-    console.log('Skipping already existing attachment: ' + attFile);
+    log('Skipping already existing attachment: ' + attFile);
     return callback();
   }
 
@@ -76,16 +79,16 @@ function getAttachment(connection, attachmentsDir, attachment, callback) {
     res.on('end', function () {
       fs.writeFile(attFile, binData, 'binary', function (err) {
         if (err) {
-          console.log('Error while writing attachment: ' + attFile);
+          log('Error while writing attachment: ' + attFile);
           throw err;
         }
-        console.log('Attachment saved: ' + attFile);
+        log('Attachment saved: ' + attFile);
         callback();
       });
     });
 
   }).on('error', function (e) {
-    console.log('Error while fetching https://' + options.host + options.path, e);
+    log('Error while fetching https://' + options.host + options.path);
     callback(e);
   });
 }
