@@ -41,7 +41,7 @@ describe('api-resources', function () {
 
         api.toJSONFile(params, function(err) {
             should.not.exist(err);
-            fs.existsSync(params.folder+params.resource+'.json').should.equal(true);
+            fs.existsSync(params.folder+'/'+params.resource+'.json').should.equal(true);
             done();
         });
     });
@@ -52,7 +52,7 @@ describe('api-resources', function () {
 
         api.toJSONFile(params, function(err) {
             should.not.exist(err);
-            fs.existsSync(params.folder+'events.json').should.equal(true);
+            fs.existsSync(params.folder+'/'+'events.json').should.equal(true);
             done();
         });
     });
@@ -63,7 +63,7 @@ describe('api-resources', function () {
 
         api.toJSONFile(params, function(err) {
             should.exist(err);
-            fs.existsSync(params.folder+params.resource+'.json').should.equal(false);
+            fs.existsSync(params.folder+'/'+params.resource+'.json').should.equal(false);
             done();
         });
     });

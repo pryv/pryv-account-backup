@@ -54,7 +54,7 @@ exports.download = function (connection, backupDir, callback, log) {
  * @param callback
  */
 function getAttachment(connection, attachmentsDir, attachment, callback, log) {
-  var attFile = attachmentsDir + attachment.eventId + '_' + attachment.fileName;
+  var attFile = attachmentsDir + '/' + attachment.eventId + '_' + attachment.fileName;
 
   if (fs.existsSync(attFile)) {
     log('Skipping already existing attachment: ' + attFile);

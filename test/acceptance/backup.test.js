@@ -51,7 +51,7 @@ describe('backup', function () {
         function checkFiles(stepDone) {
           resources.forEach(function(resource){
             var outputFilename = resource.replace('/', '_').split('?')[0] + '.json';
-            fs.existsSync(settings.backupDirectory.baseDir + outputFilename).should.equal(true);
+            fs.existsSync(settings.backupDirectory.baseDir + '/' + outputFilename).should.equal(true);
           });
           stepDone();
         },
@@ -60,7 +60,7 @@ describe('backup', function () {
           events.events.forEach(function (event) {
             if (event.attachments) {
               event.attachments.forEach(function (att) {
-                var attFile = settings.backupDirectory.attachmentsDir + event.id + '_' + att.fileName;
+                var attFile = settings.backupDirectory.attachmentsDir + '/' + event.id + '_' + att.fileName;
                 fs.existsSync(attFile).should.equal(true);
               });
             }
@@ -79,7 +79,7 @@ describe('backup', function () {
                     }
                     var outputFilename = resource.replace('/', '_').split('?')[0];
 
-                    var json = require(__dirname + '/../../' + settings.backupDirectory.baseDir + outputFilename);
+                    var json = require(__dirname + '/../../' + settings.backupDirectory.baseDir + '/' + outputFilename);
 
                     if (outputFilename === 'followed-slices') {
                       outputFilename = 'followedSlices';

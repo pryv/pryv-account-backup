@@ -1,6 +1,5 @@
 var mkdirp = require('mkdirp'),
     fs = require('fs'),
-    rmdir = require('rmdir'),
     async = require('async');
 
 /**
@@ -11,9 +10,9 @@ var mkdirp = require('mkdirp'),
  */
 var BackupDirectory = module.exports = function (username, domain, dir) {
   var rootDir = dir || './backup/';
-  this.baseDir = rootDir + username + '.' + domain + '/';
-  this.attachmentsDir = this.baseDir + 'attachments/';
-  this.eventsFile = this.baseDir + 'events.json';
+  this.baseDir = rootDir + username + '.' + domain;
+  this.attachmentsDir = this.baseDir + '/attachments/';
+  this.eventsFile = this.baseDir + '/events.json';
 };
 
 /**
@@ -56,7 +55,8 @@ BackupDirectory.prototype.createDirs = function (callback) {
  */
 BackupDirectory.prototype.deleteDirs = function (callback) {
   if(fs.existsSync(this.baseDir)) {
-    rmdir(this.baseDir, callback);
+    var exec = require('child_process').exec;
+    exec('rm -r ' + this.baseDir, callback);
   } else {
     callback();
   }

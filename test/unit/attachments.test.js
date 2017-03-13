@@ -46,7 +46,7 @@ describe('attachments', function () {
             events.events.forEach(function (event) {
                 if (event.attachments) {
                     event.attachments.forEach(function (att) {
-                        var attFile = BackupDirectory.attachmentsDir + event.id + '_' + att.fileName;
+                        var attFile = BackupDirectory.attachmentsDir + '/' + event.id + '_' + att.fileName;
                         fs.existsSync(attFile).should.equal(true);
                     });
                 }
