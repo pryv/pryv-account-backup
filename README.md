@@ -60,3 +60,12 @@ backup.start(settings, function (err) {
       // ...  
 });  
 ```
+
+## Contribute
+
+Prerequisites: Node v8+, yarn v0.27.5
+
+Install dependencies: `yarn install`
+
+Run tests: `yarn run test`
+
