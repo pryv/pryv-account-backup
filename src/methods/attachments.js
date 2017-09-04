@@ -54,7 +54,7 @@ exports.download = function (connection, backupDir, callback, log) {
  * @param callback
  */
 function getAttachment(connection, attachmentsDir, attachment, callback, log) {
-  var attFile = attachmentsDir + '/' + attachment.eventId + '_' + attachment.fileName;
+  var attFile = attachmentsDir + attachment.eventId + '_' + attachment.fileName;
 
   if (fs.existsSync(attFile)) {
     log('Skipping already existing attachment: ' + attFile);
@@ -79,10 +79,10 @@ function getAttachment(connection, attachmentsDir, attachment, callback, log) {
     res.on('end', function () {
       fs.writeFile(attFile, binData, 'binary', function (err) {
         if (err) {
-          log('Error while writing attachment: ' + attFile);
+          log('Error while writing attachment: ' + attachment.fileName);
           throw err;
         }
-        log('Attachment saved: ' + attFile);
+        log('Attachment saved: ' + attachment.fileName);
         callback();
       });
     });

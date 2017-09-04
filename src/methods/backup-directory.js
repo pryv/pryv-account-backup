@@ -10,9 +10,9 @@ var mkdirp = require('mkdirp'),
  */
 var BackupDirectory = module.exports = function (username, domain, dir) {
   var rootDir = dir || './backup/';
-  this.baseDir = rootDir + username + '.' + domain;
-  this.attachmentsDir = this.baseDir + '/attachments/';
-  this.eventsFile = this.baseDir + '/events.json';
+  this.baseDir = rootDir + username + '.' + domain + '/';
+  this.attachmentsDir = this.baseDir + 'attachments/';
+  this.eventsFile = this.baseDir + 'events.json';
 };
 
 /**
