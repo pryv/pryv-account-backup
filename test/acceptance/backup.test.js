@@ -30,7 +30,7 @@ describe('backup', function () {
 
     var eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000 + '&state=all';
     var streamsRequest = 'streams?state=all';
-    resources = ['account', streamsRequest, 'followed-slices', 'profile/public', eventsRequest];
+    resources = ['account', streamsRequest, 'accesses', 'followed-slices', 'profile/public', eventsRequest];
 
     pryv.Connection.login(settings, function (err, conn) {
       connection = conn;
@@ -43,6 +43,7 @@ describe('backup', function () {
   });
 
   it('should backup the correct folders and files', function (done) {
+    var time = Date.now()/1000;
     async.series([
         function startBackup(stepDone) {
           backup.start(settings, stepDone);
@@ -84,6 +85,23 @@ describe('backup', function () {
                       outputFilename = 'followedSlices';
                     } else if (outputFilename === 'profile_public') {
                       outputFilename = 'profile';
+                    }
+                    
+                    var expected = json[outputFilename];
+                    var actual = result[outputFilename];
+                    
+                    if(outputFilename === 'accesses') {
+                      expected.forEach(function (access, i) {
+                        // The lastUsed property of the access used by this test
+                        // will be updated at login, so we just check that the
+                        // recorded time matches approximately (nearest second)
+                        // the time at which we started the test.
+                        if(access.name === settings.appId && access.type === 'personal') {
+                          should((actual[i].lastUsed - time) < 1).be.true();
+                          delete access.lastUsed;
+                          delete actual[i].lastUsed;
+                        }
+                      });
                     }
 
                     JSON.stringify(result[outputFilename]).should.equal(JSON.stringify(json[outputFilename]));
