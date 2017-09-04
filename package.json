@@ -1,5 +1,5 @@
 {
-  "name": "backup-node",
+  "name": "pryv-backup-node",
   "description": "Backup your Pryv account",
   "version": "0.1.1",
   "private": false,
