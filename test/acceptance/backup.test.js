@@ -5,8 +5,7 @@ var backup = require('../../src/main'),
     async = require('async'),
     fs = require('fs'),
     should = require('should'),
-    pryv = require('pryv'),
-    _ = require('lodash');
+    pryv = require('pryv');
 
 describe('backup', function () {
 
@@ -44,6 +43,7 @@ describe('backup', function () {
   });
 
   it('should backup the correct folders and files', function (done) {
+    var time = Date.now()/1000;
     async.series([
         function startBackup(stepDone) {
           backup.start(settings, stepDone);
@@ -77,22 +77,33 @@ describe('backup', function () {
                     if(error) {
                       return callback(error);
                     }
-                    var outputFilename = resource.replace('/', '_').split('?')[0];
 
-                    var json = require(__dirname + '/../../' + settings.backupDirectory.baseDir + '/' + outputFilename);
+                    var outputFilename = resource.replace('/', '_').split('?')[0];
+                    var json = JSON.parse(fs.readFileSync(settings.backupDirectory.baseDir + outputFilename + '.json', 'utf8'));
 
                     if (outputFilename === 'followed-slices') {
                       outputFilename = 'followedSlices';
                     } else if (outputFilename === 'profile_public') {
                       outputFilename = 'profile';
                     }
-
-                    var expected = result[outputFilename],
-                        backedUp = json[outputFilename];
-
-                    if (outputFilename === 'accesses') {
-                      return callback();
+                    
+                    var expected = json[outputFilename];
+                    var actual = result[outputFilename];
+                    
+                    if(outputFilename === 'accesses') {
+                      expected.forEach(function (access, i) {
+                        // The lastUsed property of the access used by this test
+                        // will be updated at login, so we just check that the
+                        // recorded time matches approximately (nearest second)
+                        // the time at which we started the test.
+                        if(access.name === settings.appId && access.type === 'personal') {
+                          should((actual[i].lastUsed - time) < 1).be.true();
+                          delete access.lastUsed;
+                          delete actual[i].lastUsed;
+                        }
+                      });
                     }
+
                     JSON.stringify(result[outputFilename]).should.equal(JSON.stringify(json[outputFilename]));
                     callback();
                   }
