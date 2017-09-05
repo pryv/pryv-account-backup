@@ -1,5 +1,5 @@
 {
-  "name": "app-node-bluebutton",
+  "name": "app-node-backup",
   "description": "Backup your Pryv account",
   "version": "0.1.1",
   "private": false,
@@ -7,8 +7,7 @@
     "Pryv",
     "backup",
     "app",
-    "node",
-    "bluebutton"
+    "node"
   ],
   "main": "src/main.js",
   "repository": {
