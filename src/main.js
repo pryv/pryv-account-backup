@@ -49,7 +49,6 @@ exports.start = function (params, callback) {
 };
 
 exports.startOnConnection = function (connection, params, callback, log) {
-
   var backupDirectory = params.backupDirectory;
 
   if (!log) {
