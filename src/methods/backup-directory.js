@@ -12,7 +12,9 @@ var BackupDirectory = module.exports = function (username, domain, dir) {
   var rootDir = dir || './backup/';
   this.baseDir = rootDir + username + '.' + domain + '/';
   this.attachmentsDir = this.baseDir + 'attachments/';
+  this.appProfilesDir = this.baseDir + 'app_profiles/';
   this.eventsFile = this.baseDir + 'events.json';
+  this.accessesFile = this.baseDir + 'accesses.json';
 };
 
 /**
@@ -32,6 +34,15 @@ BackupDirectory.prototype.createDirs = function (callback) {
       mkdirp(this.baseDir, function (err) {
         if (err) {
           console.error('Error while creating base dir: ' + this.baseDir, err);
+          stepDone(err);
+        }
+        stepDone();
+      });
+    }.bind(this),
+    function createAppProfileDir(stepDone) {
+      mkdirp(this.appProfilesDir, function (err) {
+        if (err) {
+          console.error('Error while creating accesses dir: ' + this.appProfilesDir, err);
           stepDone(err);
         }
         stepDone();

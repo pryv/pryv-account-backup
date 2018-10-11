@@ -14,12 +14,13 @@ var https = require('https');
  */
 exports.toJSONFile = function streamApiToFile(params, callback, log) {
   connection = params.connection;
+  params.extraFileName =  params.extraFileName || '';
   if (!log) {
     log = console.log;
   }
 
-  log('Fetching: ' + params.resource);
-  var outputFilename = params.resource.replace('/', '_').split('?')[0] + '.json';
+  log('Fetching: ' + params.resource + params.extraFileName );
+  var outputFilename = params.resource.replace('/', '_').split('?')[0] + params.extraFileName + '.json';
 
   var writeStream = fs.createWriteStream(params.folder  + outputFilename, { encoding: 'utf8' });
 

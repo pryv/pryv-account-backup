@@ -84,6 +84,25 @@ exports.startOnConnection = function (connection, params, callback, log) {
           }, callback, log)
         }, done);
     },
+    function fetchAppProfiles (stepDone) {
+      var accessesData = JSON.parse(fs.readFileSync(backupDirectory.accessesFile, 'utf8'));
+      async.mapSeries(accessesData.accesses, function(access, callback) {
+        if (access.type !== 'app') {
+          return callback();
+        }
+        var tempConnection = new pryv.Connection({
+          username: connection.username,
+          domain: connection.domain,
+          auth: access.token
+        });
+        apiResources.toJSONFile({
+          folder: backupDirectory.appProfilesDir,
+          resource: 'profile/app',
+          extraFileName: '_' + access.id,
+          connection: tempConnection
+        }, callback, log);
+      },stepDone);
+    },
     function fetchAttachments (stepDone) {
       if (params.includeAttachments) {
         attachments.download(connection, backupDirectory, stepDone, log);
