@@ -1,6 +1,7 @@
 var async = require('async'),
     fs = require('fs'),
-    https = require('https');
+    https = require('https'),
+    JSONStream = require('JSONStream');
 
 /**
  * Parses the events from the provided file and downloads their attachments
@@ -13,35 +14,68 @@ exports.download = function (connection, backupDir, callback, log) {
   if (!log) {
     log = console.log;
   }
-  var events = JSON.parse(fs.readFileSync(backupDir.eventsFile, 'utf8'));
-  var attachments = [];
-  log('Start attachments download.');
-  // gather attachments
-  events.events.forEach(function (event) {
-    if (event.attachments) {
-      event.attachments.forEach(function (att) {
-        if (att.id) {
-          att.eventId = event.id;
-          attachments.push(att);
-        } else {
-          log('Invalid event: att.id is missing: ' + event);
-        }
-      });
-    }
-  });
-
-  // Download attachment files in 10 parralel calls
-  async.mapLimit(attachments, 10, function (item, callback) {
-    getAttachment(connection, backupDir.attachmentsDir, item, callback, log);
-  }, function (error) {
+  loadEventFile(connection, backupDir, function (error, attachments) {
     if (error) {
-      log('Error while downloading the attachments: ' + error);
-      return;
+      log('Failed parsing event file for attachments' + error);
+      return callback(error);
     }
-    log('Download done');
-    callback();
-  });
+
+    // Download attachment files in 10 parralel calls
+    async.mapLimit(attachments, 10, function (item, callback) {
+      getAttachment(connection, backupDir.attachmentsDir, item, callback, log);
+    }, function (error) {
+      if (error) {
+        log('Error while downloading the attachments: ' + error);
+        callback(error);
+        return;
+      }
+      log('Download done');
+      callback();
+    });
+
+  }, log);
+
 };
+
+
+function loadEventFile(connection, backupDir, callback, log) {
+  var attachments = [];
+  log('Parsing events for attachments');
+
+  // --- pretty timed log ---//
+  var timeRepeat = 1000;
+  var total = 0;
+  var done = false;
+  var timeLog = function() {
+    if (done) return;
+    log('Parsed ' +  total + ' events, found ' + attachments.length + ' attachments');
+    setTimeout(timeLog, timeRepeat);
+  }
+  setTimeout(timeLog, timeRepeat);
+
+  fs.createReadStream(backupDir.eventsFile, 'utf8').pipe(
+    JSONStream.parse('events.*').on('data', function(event) {
+      total++;
+      if (event.attachments) {
+        event.attachments.forEach(function (att) {
+          if (att.id) {
+            att.eventId = event.id;
+            attachments.push(att);
+          } else {
+            log('Invalid event: att.id is missing: ' + event);
+          }
+        });
+      }
+  }).on('error', function(error) {
+      done = true;
+      log('Error while fetching attachments: ' + error)
+      callback(error, attachments);
+    }).on('end', function() {
+      done = true;
+      log('Found ' + attachments.length + ' attachments');
+      callback(null, attachments);
+    }));
+}
 
 
 /**

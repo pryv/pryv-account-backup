@@ -31,24 +31,46 @@ exports.toJSONFile = function streamApiToFile(params, callback, log) {
     headers: {'Authorization': connection.auth}
   };
 
+  // --- pretty timed log ---//
+  var timeRepeat = 1000;
   var total = 0;
+  var done = false;
+  var timeLog = function() {
+    if (done) return;
+    log('Fetching ' + outputFilename + ': ' +  prettyPrint(total));
+    setTimeout(timeLog, timeRepeat);
+  }
+  setTimeout(timeLog, timeRepeat);
+
+
   https.get(options, function (res) {
     res.setEncoding('utf8');
 
     res.on('data', function (chunk) {
       total += chunk.length;
-      log('Received ' + outputFilename + ': ' + total + ' chars');
       writeStream.write(chunk);
     });
 
     res.on('end', function () {
       writeStream.end();
-      log('Done: ' + outputFilename);
+      done = true;
+      log('Received: ' + outputFilename + ' '  + prettyPrint(total));
       callback();
     });
 
   }).on('error', function (e) {
+    done = true;
     log('Error while fetching https://' + options.host + options.path);
     callback(e);
   });
+}
+
+function prettyPrint(total) {
+  if (total > 1000000) {
+    return Math.round(total / 1000000) + 'MB';
+  }
+  if (total > 1000) {
+    return Math.round(total / 1000) + 'KB';
+  }
+  return total + 'Bytes';
 }

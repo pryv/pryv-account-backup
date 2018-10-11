@@ -67,7 +67,7 @@ exports.startOnConnection = function (connection, params, callback, log) {
         return done();
       }
 
-      var eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000;
+      var eventsRequest = 'events?fromTime=-2350373077&toTime=2350373077';
       var streamsRequest = 'streams';
       if (params.includeTrashed) {
         eventsRequest += '&state=all';
