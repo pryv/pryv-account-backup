@@ -75,7 +75,7 @@ exports.startOnConnection = function (connection, params, callback, log) {
       }
 
       async.mapSeries(['account', streamsRequest, 'accesses',
-          'followed-slices', 'profile/public', eventsRequest],
+          'followed-slices', 'profile/private' , 'profile/public', eventsRequest],
         function (resource, callback) {
           apiResources.toJSONFile({
             folder: backupDirectory.baseDir,
