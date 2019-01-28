@@ -61,7 +61,7 @@ describe('api-resources', function () {
 
         params.resource = 'notvalid';
 
-        api.toJSONFile(params, function(err) {
+        api.toJSONFile(params, function(err, res) {
             should.exist(err);
             fs.existsSync(params.folder+'/'+params.resource+'.json').should.equal(false);
             done();

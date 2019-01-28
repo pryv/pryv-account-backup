@@ -20,9 +20,14 @@ exports.toJSONFile = function streamApiToFile(params, callback, log) {
   }
 
   log('Fetching: ' + params.resource + params.extraFileName );
-  var outputFilename = params.resource.replace('/', '_').split('?')[0] + params.extraFileName + '.json';
+  var outputFilename = null;
+  var writeStream = null;
 
-  var writeStream = fs.createWriteStream(params.folder  + outputFilename, { encoding: 'utf8' });
+  function openStreamsIfNeeded() {
+      if (outputFilename) return;
+     outputFilename = params.resource.replace('/', '_').split('?')[0] + params.extraFileName + '.json';
+     writeStream = fs.createWriteStream(params.folder  + outputFilename, { encoding: 'utf8' });
+  }
 
 
   var options = {
@@ -45,14 +50,22 @@ exports.toJSONFile = function streamApiToFile(params, callback, log) {
 
 
   https.get(options, function (res) {
+    if (res.statusCode != 200) {
+      log('Error while fetching https://' + options.host + options.path + ' Code: ' + res.statusCode + ' ' + res.statusMessage);
+      done = true;
+      callback(res.statusCode);
+      return;
+    };
     res.setEncoding('utf8');
 
     res.on('data', function (chunk) {
+      openStreamsIfNeeded();
       total += chunk.length;
       writeStream.write(chunk);
     });
 
     res.on('end', function () {
+      openStreamsIfNeeded();
       writeStream.end();
       done = true;
       log('Received: ' + outputFilename + ' '  + prettyPrint(total));
@@ -60,6 +73,7 @@ exports.toJSONFile = function streamApiToFile(params, callback, log) {
     });
 
   }).on('error', function (e) {
+    if (done) return;
     done = true;
     log('Error while fetching https://' + options.host + options.path);
     callback(e);

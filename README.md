@@ -80,3 +80,6 @@ Install dependencies: `yarn install`
 
 Run tests: `yarn run test`
 
+## License
+
+MIT License as included
