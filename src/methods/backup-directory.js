@@ -28,32 +28,39 @@ var BackupDirectory = module.exports = function (username, domain, dir) {
  *
  * @param callback
  */
-BackupDirectory.prototype.createDirs = function (callback) {
+BackupDirectory.prototype.createDirs = function (callback, log) {
+  if (!log) {
+    log = console.log;
+  }
   async.series([
     function createBaseDir(stepDone) {
       mkdirp(this.baseDir, function (err) {
         if (err) {
           console.error('Error while creating base dir: ' + this.baseDir, err);
-          stepDone(err);
+          return stepDone(err);
         }
+        log('Directories: created base dir > ' + this.baseDir);
         stepDone();
-      });
+      }.bind(this));
     }.bind(this),
     function createAppProfileDir(stepDone) {
       mkdirp(this.appProfilesDir, function (err) {
         if (err) {
           console.error('Error while creating accesses dir: ' + this.appProfilesDir, err);
-          stepDone(err);
+          return stepDone(err);
         }
+        log('Directories: appProfilesDir');
         stepDone();
-      });
+      }.bind(this));
     }.bind(this),
     function createAttachmentsDir(stepDone) {
       mkdirp(this.attachmentsDir, function (err) {
         if (err) {
           console.error('Error while creating attachments dir: ' + this.attachmentsDir, err);
-          stepDone(err);
+          return stepDone(err);
         }
+
+        log('Directories: attachmentsDir');
         stepDone();
       }.bind(this));
     }.bind(this)

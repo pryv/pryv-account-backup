@@ -34,7 +34,7 @@ describe('backup', function () {
 
     pryv.Connection.login(settings, function (err, conn) {
       connection = conn;
-      done(err);
+      settings.backupDirectory.deleteDirs(done);
     });
   });
 

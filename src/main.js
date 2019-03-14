@@ -57,7 +57,7 @@ exports.startOnConnection = function (connection, params, callback, log) {
 
   async.series([
     function createDirectoryTree(done) {
-      backupDirectory.createDirs(done);
+      backupDirectory.createDirs(done, log);
     },
     function fetchData (done) {
       log('Starting Backup');
