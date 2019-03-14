@@ -9,7 +9,7 @@ var mkdirp = require('mkdirp'),
  * @param domain
  */
 var BackupDirectory = module.exports = function (username, domain, dir) {
-  var rootDir = dir || './backup/';
+  var rootDir = dir || '/tmp/backupPY/';
   this.baseDir = rootDir + username + '.' + domain + '/';
   this.attachmentsDir = this.baseDir + 'attachments/';
   this.appProfilesDir = this.baseDir + 'app_profiles/';
