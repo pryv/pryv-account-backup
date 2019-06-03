@@ -97,7 +97,7 @@ describe('backup', function () {
                         // recorded time matches approximately (nearest second)
                         // the time at which we started the test.
                         if(access.name === settings.appId && access.type === 'personal') {
-                          should((actual[i].lastUsed - time) < 1).be.true();
+                          should((actual[i].lastUsed - time) < 2).be.true();
                           delete access.lastUsed;
                           delete actual[i].lastUsed;
                         }

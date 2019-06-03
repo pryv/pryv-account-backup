@@ -92,7 +92,7 @@ exports.startOnConnection = function (connection, params, callback, log) {
         }
         var tempConnection = new pryv.Connection({
           username: connection.username,
-          domain: connection.domain,
+          domain: connection.domain || connection.settings.domain,
           auth: access.token
         });
         apiResources.toJSONFile({
