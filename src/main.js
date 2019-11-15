@@ -1,12 +1,11 @@
-var pryv = require('pryv'),
-  fs = require('fs'),
-  async = require('async'),
-  _ = require('lodash'),
-  apiResources = require('./methods/api-resources'),
-  attachments = require('./methods/attachments');
+const pryv = require('pryv');
+const fs = require('fs');
+const async = require('async');
+const _ = require('lodash');
+const apiResources = require('./methods/api-resources');
+const attachments = require('./methods/attachments');
 
-
-exports.signInToPryv = function (params, callback) {
+function signInToPryv (params, callback) {
   params = _.extend({
     appId: 'pryv-backup',
     username: null,
@@ -39,17 +38,17 @@ exports.signInToPryv = function (params, callback) {
  * @param callback {function}
  */
 exports.start = function (params, callback) {
-  exports.signInToPryv(params, function(err, conn) {
+  signInToPryv(params, function(err, conn) {
     if (err) {
       console.log('Connection failed with Error:', err);
       return callback(err);
     }
-    exports.startOnConnection(conn, params, callback);
+    startOnConnection(conn, params, callback);
   });
 };
 
-exports.startOnConnection = function (connection, params, callback, log) {
-  var backupDirectory = params.backupDirectory;
+function startOnConnection (connection, params, callback, log) {
+  const backupDirectory = params.backupDirectory;
 
   if (!log) {
     log = console.log;
@@ -67,8 +66,8 @@ exports.startOnConnection = function (connection, params, callback, log) {
         return done();
       }
 
-      var eventsRequest = 'events?fromTime=-2350373077&toTime=2350373077';
-      var streamsRequest = 'streams';
+      const eventsRequest = 'events?fromTime=-2350373077&toTime=2350373077';
+      const streamsRequest = 'streams';
       if (params.includeTrashed) {
         eventsRequest += '&state=all';
         streamsRequest += '?state=all';
@@ -85,12 +84,12 @@ exports.startOnConnection = function (connection, params, callback, log) {
         }, done);
     },
     function fetchAppProfiles (stepDone) {
-      var accessesData = JSON.parse(fs.readFileSync(backupDirectory.accessesFile, 'utf8'));
+      const accessesData = JSON.parse(fs.readFileSync(backupDirectory.accessesFile, 'utf8'));
       async.mapSeries(accessesData.accesses, function(access, callback) {
         if (access.type !== 'app') {
           return callback();
         }
-        var tempConnection = new pryv.Connection({
+        const tempConnection = new pryv.Connection({
           username: connection.username,
           domain: connection.domain || connection.settings.domain,
           auth: access.token
