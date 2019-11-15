@@ -4,13 +4,6 @@
         "username": "testuser",
         "password": "testuser",
         "includeTrashed": false,
-        "includeAttachments": false,
-        "backupDirectory": {
-            "baseDir": "/tmp/backupPY/testuser.pryv.me/",
-            "attachmentsDir": "/tmp/backupPY/testuser.pryv.me/attachments/",
-            "appProfilesDir": "/tmp/backupPY/testuser.pryv.me/app_profiles/",
-            "eventsFile": "/tmp/backupPY/testuser.pryv.me/events.json",
-            "accessesFile": "/tmp/backupPY/testuser.pryv.me/accesses.json"
-        }
+        "includeAttachments": false
     }
 }
