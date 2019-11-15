@@ -38,8 +38,9 @@
     "mkdirp": "~0.5.0",
     "pryv": "1.2.1",
     "read": "^1.0.7",
-    "nconf": "0.6.x",
-    "winston": "0.6.x"
+    "nconf": "^0.6.x",
+    "winston": "^0.6.x",
+    "parse-domain": "^2.3.4"
   },
   "devDependencies": {
     "coveralls": "^3.0.3",
