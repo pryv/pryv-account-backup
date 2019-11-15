@@ -1,6 +1,5 @@
-var fs = require('fs'); // TODO replace all var
-var https = require('https');
-// const superagent = require('superagent');
+const fs = require('fs'); 
+const https = require('https');
 
 /**
  * Downloads the requested Pryv API resource and saves it to a local file under the name
@@ -20,8 +19,8 @@ exports.toJSONFile = function streamApiToFile(apiUrl, params, callback, log) {
   }
 
   log('Fetching: ' + params.resource + params.extraFileName );
-  var outputFilename = null;
-  var writeStream = null;
+  let outputFilename = null;
+  let writeStream = null;
 
   function openStreamsIfNeeded() {
       if (outputFilename) return;
@@ -30,7 +29,7 @@ exports.toJSONFile = function streamApiToFile(apiUrl, params, callback, log) {
   }
 
   apiUrl = apiUrl.replace('https://', '').replace(/\/$/, '');
-  var options = {
+  const options = {
     host: apiUrl,
     port: connection.settings.port,
     path: '/' + params.resource,
@@ -38,10 +37,10 @@ exports.toJSONFile = function streamApiToFile(apiUrl, params, callback, log) {
   };
 
   // --- pretty timed log ---//
-  var timeRepeat = 1000;
-  var total = 0;
-  var done = false;
-  var timeLog = function() {
+  const timeRepeat = 1000;
+  let total = 0;
+  let done = false;
+  const timeLog = function() {
     if (done) return;
     log('Fetching ' + outputFilename + ': ' +  prettyPrint(total));
     setTimeout(timeLog, timeRepeat);

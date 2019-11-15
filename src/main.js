@@ -104,8 +104,8 @@ function startOnConnection (connection, params, callback, log) {
         return done();
       }
 
-      const eventsRequest = 'events?fromTime=-2350373077&toTime=2350373077';
-      const streamsRequest = 'streams';
+      let eventsRequest = 'events?fromTime=-2350373077&toTime=2350373077';
+      let streamsRequest = 'streams';
       if (params.includeTrashed) {
         eventsRequest += '&state=all';
         streamsRequest += '?state=all';

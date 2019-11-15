@@ -1,7 +1,7 @@
-var async = require('async'),
-    fs = require('fs'),
-    https = require('https'),
-    JSONStream = require('JSONStream');
+const async = require('async');
+const fs = require('fs');
+const https = require('https');
+const JSONStream = require('JSONStream');
 
 /**
  * Parses the events from the provided file and downloads their attachments
@@ -39,14 +39,14 @@ exports.download = function (connection, backupDir, callback, log) {
 
 
 function loadEventFile(connection, backupDir, callback, log) {
-  var attachments = [];
+  const attachments = [];
   log('Parsing events for attachments');
 
   // --- pretty timed log ---//
-  var timeRepeat = 1000;
-  var total = 0;
-  var done = false;
-  var timeLog = function() {
+  const timeRepeat = 1000;
+  let total = 0;
+  let done = false;
+  const timeLog = function() {
     if (done) return;
     log('Parsed ' +  total + ' events, found ' + attachments.length + ' attachments');
     setTimeout(timeLog, timeRepeat);
@@ -88,15 +88,15 @@ function loadEventFile(connection, backupDir, callback, log) {
  * @param callback
  */
 function getAttachment(connection, attachmentsDir, attachment, callback, log) {
-  var attName = attachment.eventId + '_' + attachment.fileName;
-  var attFile = attachmentsDir + attName;
+  const attName = attachment.eventId + '_' + attachment.fileName;
+  const attFile = attachmentsDir + attName;
 
   if (fs.existsSync(attFile)) {
     log('Skipping already existing attachment: ' + attFile);
     return callback();
   }
 
-  var options = {
+  const options = {
     host: connection.username + '.' + connection.settings.domain,
     port: connection.settings.port,
     path: '/events/' +
@@ -104,7 +104,7 @@ function getAttachment(connection, attachmentsDir, attachment, callback, log) {
   };
 
   https.get(options, function (res) {
-    var binData = '';
+    let binData = '';
     res.setEncoding('binary');
 
     res.on('data', function (chunk) {

@@ -1,6 +1,5 @@
 {
     "params": {
-        "domain2": "pryv.me",
         "domain": "https://reg.pryv.me/service/info",
         "username": "testuser",
         "password": "testuser",

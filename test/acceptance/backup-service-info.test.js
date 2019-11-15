@@ -1,13 +1,14 @@
 /*global describe, it, before, after */
 
 const backup = require('../../src/main');
-const credentials = require('../helpers/testuser').credentials;
+const credentials = require('../helpers/testuser').credentialsServiceInfo;
 const async = require('async');
 const fs = require('fs');
 const should = require('should');
 const pryv = require('pryv');
+const parseDomain = require("parse-domain");
 
-describe('backup', function () {
+describe('backup with service info', function () {
 
   this.timeout(10000);
 
@@ -27,10 +28,14 @@ describe('backup', function () {
 
     settings.origin = 'https://sw.' + settings.domain;
     settings.backupDirectory = new backup.Directory(settings.username, settings.domain);
+    // console.log('settings : '+JSON.stringify(settings, null, 2));
 
     const eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000 + '&state=all';
     const streamsRequest = 'streams?state=all';
     resources = ['account', streamsRequest, 'accesses', 'followed-slices', 'profile/public', eventsRequest];
+    
+    const parsedDomain = parseDomain(settings.domain);
+    settings.domain = parsedDomain.domain + '.' + parsedDomain.tld;
 
     pryv.Connection.login(settings, function (err, conn) {
       connection = conn;

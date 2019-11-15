@@ -73,7 +73,7 @@ BackupDirectory.prototype.createDirs = function (callback, log) {
  */
 BackupDirectory.prototype.deleteDirs = function (callback) {
   if(fs.existsSync(this.baseDir)) {
-    var exec = require('child_process').exec;
+    const exec = require('child_process').exec;
     exec('rm -r ' + this.baseDir, callback);
   } else {
     callback();

@@ -1,14 +1,14 @@
-var fs = require('fs'),
-  async = require('async'),
-  read = require('read'),
-  backup = require('../src/main'),
-  BackupDirectory = require('../src/methods/backup-directory');
+const fs = require('fs');
+const async = require('async');
+const read = require('read');
+const backup = require('../src/main');
+const BackupDirectory = require('../src/methods/backup-directory');
 
-var authSettings = {};
+const authSettings = {};
 
 async.series([
   function inputDomain(done) {
-    read({prompt: 'Serivce info URL or domain (default (domain): pryv.me): ', silent: false}, function (err, domain) {
+    read({prompt: 'Service info URL or domain (default (domain): pryv.me): ', silent: false}, function (err, domain) {
       authSettings.domain = domain || 'pryv.me';
       done(err);
     });

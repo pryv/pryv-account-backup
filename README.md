@@ -55,9 +55,9 @@ Add the following to your `package.json`: `"pryv-backup":"git+ssh://git@github.c
 then use it as following:
 
 ```javascript
-var backup = require('pryv-backup');
+const backup = require('pryv-backup');
 
-var settings = {
+const settings = {
       username: USERNAME,  
       domain: DOMAIN, // optional  
       password: PASSWORD,  
