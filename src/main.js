@@ -4,6 +4,7 @@ const async = require('async');
 const _ = require('lodash');
 const apiResources = require('./methods/api-resources');
 const attachments = require('./methods/attachments');
+const config = require('./utils/config.js');
 
 function signInToPryv (params, callback) {
   params = _.extend({

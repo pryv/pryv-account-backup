@@ -37,7 +37,9 @@
     "lodash": "^4.16.0",
     "mkdirp": "~0.5.0",
     "pryv": "1.2.1",
-    "read": "^1.0.7"
+    "read": "^1.0.7",
+    "nconf": "0.6.x",
+    "winston": "0.6.x"
   },
   "devDependencies": {
     "coveralls": "^3.0.3",
