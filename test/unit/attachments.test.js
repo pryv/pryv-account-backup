@@ -28,7 +28,7 @@ describe('attachments', function () {
                         resource: 'events',
                         connection: connection
                     };
-                    api.toJSONFile(params, stepDone);
+                    api.toJSONFile(params, stepDone); // TODO apiUrl
                 }
             ], done);
     });

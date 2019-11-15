@@ -45,8 +45,8 @@ describe('backup', function () {
   it('should backup the correct folders and files', function (done) {
     var time = Date.now()/1000;
     async.series([
-        function startBackup(stepDone) {
-          backup.start(settings, stepDone);
+        async function startBackup(stepDone) {
+          await backup.start(settings, stepDone);
         },
         function checkFiles(stepDone) {
           resources.forEach(function(resource){
@@ -115,4 +115,7 @@ describe('backup', function () {
       done(err);
     });
   });
+  
+  // TODO test avec service info
+  // TODO test avec domain (déjà fait au dessus)
 });

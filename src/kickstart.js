@@ -14,6 +14,10 @@ try { // service info
     domain = parsedDomain.domain + '.' + parsedDomain.tld;
 }
 catch(error) { // domain
+    if(error.code !== 'ERR_INVALID_URL') {
+        console.error(error);
+        return;
+    }
     domain = params.domain;
 }
 params.backupDirectory = new BackupDirectory(params.username, domain);

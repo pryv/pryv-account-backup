@@ -8,7 +8,7 @@ var authSettings = {};
 
 async.series([
   function inputDomain(done) {
-    read({prompt: 'Domain (default: pryv.me): ', silent: false}, function (err, domain) {
+    read({prompt: 'Serivce info URL or domain (default (domain): pryv.me): ', silent: false}, function (err, domain) {
       authSettings.domain = domain || 'pryv.me';
       done(err);
     });
@@ -57,8 +57,8 @@ async.series([
       done();
     }
   },
-  function doBackup(stepDone) {
-    backup.start(authSettings, stepDone);
+  async function doBackup(stepDone) {
+    await backup.start(authSettings, stepDone);
   }
 ], function (err) {
   if (err) {

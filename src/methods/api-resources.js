@@ -1,6 +1,6 @@
-var fs = require('fs');
+var fs = require('fs'); // TODO replace all var
 var https = require('https');
-
+// const superagent = require('superagent');
 
 /**
  * Downloads the requested Pryv API resource and saves it to a local file under the name
@@ -12,7 +12,7 @@ var https = require('https');
  *        params.baseDir {string} directory containing user backup data
  * @param callback
  */
-exports.toJSONFile = function streamApiToFile(params, callback, log) {
+exports.toJSONFile = function streamApiToFile(apiUrl, params, callback, log) {
   connection = params.connection;
   params.extraFileName =  params.extraFileName || '';
   if (!log) {
@@ -29,9 +29,9 @@ exports.toJSONFile = function streamApiToFile(params, callback, log) {
      writeStream = fs.createWriteStream(params.folder  + outputFilename, { encoding: 'utf8' });
   }
 
-
+  apiUrl = apiUrl.replace('https://', '').replace(/\/$/, '');
   var options = {
-    host: connection.username + '.' + connection.settings.domain,
+    host: apiUrl,
     port: connection.settings.port,
     path: '/' + params.resource,
     headers: {'Authorization': connection.auth}

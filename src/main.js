@@ -4,9 +4,13 @@ const async = require('async');
 const _ = require('lodash');
 const apiResources = require('./methods/api-resources');
 const attachments = require('./methods/attachments');
+const { URL } = require('url');
+const superagent = require('superagent');
 const config = require('./utils/config.js');
+const parseDomain = require("parse-domain");
+const Promise = require("bluebird");
 
-function signInToPryv (params, callback) {
+async function signInToPryv (params) {
   params = _.extend({
     appId: 'pryv-backup',
     username: null,
@@ -17,14 +21,42 @@ function signInToPryv (params, callback) {
     includeTrashed: false,
     includeAttachments: false
   }, params);
-
+  
+  let apiUrl;
+  try { // service info
+    const serviceInfoUrl = params.domain;
+    new URL(serviceInfoUrl); // Check if serviceInfoUrl is a valid url
+    
+    const parsedDomain = parseDomain(serviceInfoUrl);
+    params.domain = parsedDomain.domain + '.' + parsedDomain.tld;
+    apiUrl = await fetchApiUrl(serviceInfoUrl, params.username);
+  }
+  catch(error) { // domain
+    if(error.code !== 'ERR_INVALID_URL') {
+      console.error(error); // Unknown error
+      return;
+    }
+    apiUrl = params.username + '.' + params.domain;
+  }
+  
   params.origin = 'https://sw.' + params.domain;
-
-  console.log('Connecting to ' + params.username + '.' + params.domain);
-
-  pryv.Connection.login(params, callback);
+  console.log('Connecting to ' + params.apiUrl);
+  const conn = await Promise.fromCallback(function(callback) {
+    return pryv.Connection.login(params, callback);
+  });
+  
+  return [conn, apiUrl];
 }
 
+async function fetchApiUrl(serviceInfoUrl, username) {
+    try {
+      const serviceInfoRes = await superagent.get(serviceInfoUrl);
+      return serviceInfoRes.body.api.replace('{username}', username)
+    } catch (error) {
+      console.error('Unable to reach service info at ' + serviceInfoUrl + ' : ' + JSON.stringify(error, null, 2));
+    }
+    return '';
+  }
 
 /**
  * Downloads the user data in folder `./backup/username.domain/`
@@ -38,14 +70,19 @@ function signInToPryv (params, callback) {
  *        params.backupDirectory {backup-directory}
  * @param callback {function}
  */
-exports.start = function (params, callback) {
-  signInToPryv(params, function(err, conn) {
-    if (err) {
-      console.log('Connection failed with Error:', err);
-      return callback(err);
-    }
-    startOnConnection(conn, params, callback);
-  });
+exports.start = async function (params, callback) {
+  let conn;
+  let apiUrl;
+  try {
+    [conn, apiUrl] = await signInToPryv(params);
+    params.apiUrl = apiUrl;
+  }
+  catch(error) {
+    console.log('Connection failed with Error:', error);
+    return callback(error);
+  }
+  
+  startOnConnection(conn, params, callback);
 };
 
 function startOnConnection (connection, params, callback, log) {
@@ -77,7 +114,8 @@ function startOnConnection (connection, params, callback, log) {
       async.mapSeries(['account', streamsRequest, 'accesses',
           'followed-slices', 'profile/private' , 'profile/public', eventsRequest],
         function (resource, callback) {
-          apiResources.toJSONFile({
+          apiResources.toJSONFile(params.apiUrl, 
+          {
             folder: backupDirectory.baseDir,
             resource: resource,
             connection: connection
@@ -95,7 +133,7 @@ function startOnConnection (connection, params, callback, log) {
           domain: connection.domain || connection.settings.domain,
           auth: access.token
         });
-        apiResources.toJSONFile({
+        apiResources.toJSONFile(params.apiUrl, {
           folder: backupDirectory.appProfilesDir,
           resource: 'profile/app',
           extraFileName: '_' + access.id,
