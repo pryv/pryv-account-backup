@@ -23,20 +23,19 @@ async function signInToPryv (params) {
   }, params);
   
   let apiUrl;
-  try { // service info
-    const serviceInfoUrl = params.domain;
-    new URL(serviceInfoUrl); // Check if serviceInfoUrl is a valid url
+  try {
+    new URL(params.domain); // Check if params.domain is a valid url
     
-    const parsedDomain = parseDomain(serviceInfoUrl);
+    const parsedDomain = parseDomain(params.domain); // it is --> we can extract the domain from it
     params.domain = parsedDomain.domain + '.' + parsedDomain.tld;
-    apiUrl = await fetchApiUrl(serviceInfoUrl, params.username);
+    apiUrl = await fetchApiUrl(params.domain, params.username);
   }
-  catch(error) { // domain
+  catch(error) {
     if(error.code !== 'ERR_INVALID_URL') {
       console.error(error); // Unknown error
       return;
     }
-    apiUrl = params.username + '.' + params.domain;
+    apiUrl = params.username + '.' + params.domain; // it is not, use it as a domain
   }
   
   params.origin = 'https://sw.' + params.domain;
@@ -162,3 +161,5 @@ function startOnConnection (connection, params, callback, log) {
  * Expose BackupDirectory as well since it is a parameter of .start()
  */
 exports.Directory = require('./methods/backup-directory');
+exports.signInToPryv = signInToPryv;
+exports.startOnConnection = startOnConnection;

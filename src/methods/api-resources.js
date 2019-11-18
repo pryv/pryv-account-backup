@@ -28,7 +28,7 @@ exports.toJSONFile = function streamApiToFile(apiUrl, params, callback, log) {
      writeStream = fs.createWriteStream(params.folder  + outputFilename, { encoding: 'utf8' });
   }
 
-  apiUrl = apiUrl.replace('https://', '').replace(/\/$/, '');
+  apiUrl = apiUrl.replace('https://', '').replace(/\/$/, ''); // remove protocol and trailing slash to be 'https.get' compatible
   const options = {
     host: apiUrl,
     port: connection.settings.port,
