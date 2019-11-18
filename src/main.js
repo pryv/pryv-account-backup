@@ -39,7 +39,7 @@ async function signInToPryv (params) {
   }
   
   params.origin = 'https://sw.' + params.domain;
-  console.log('Connecting to ' + params.apiUrl);
+  console.log('Connecting to ' + apiUrl);
   const conn = await Promise.fromCallback(function(callback) {
     return pryv.Connection.login(params, callback);
   });
