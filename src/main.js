@@ -43,11 +43,11 @@ function startBackup (params, callback) {
       console.log('Connection failed with Error:', err);
       return callback(err);
     }
-    startOnConnection(conn, params, callback);
+    startBackupOnConnection(conn, params, callback);
   });
 };
 
-function startOnConnection (connection, params, callback, log) {
+function startBackupOnConnection (connection, params, callback, log) {
   const backupDirectory = params.backupDirectory;
 
   if (!log) {
@@ -124,5 +124,5 @@ function startOnConnection (connection, params, callback, log) {
  */
 exports.Directory = require('./methods/backup-directory');
 exports.signInToPryv = signInToPryv;
-exports.startOnConnection = startOnConnection;
+exports.startBackupOnConnection = startBackupOnConnection;
 exports.startBackup = startBackup;
