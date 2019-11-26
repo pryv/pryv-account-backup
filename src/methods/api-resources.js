@@ -131,14 +131,14 @@ function parseJsonAndPost(stream, resource, batchSize, apiUrl, token, callback) 
 
 function batchCall(apiUrl, token, batchRequest, callback) {
   superagent.post(apiUrl)
-  .set('Authorization', token)
-  .set('Content-Type', 'application/json')
-  .send(batchRequest)
-  .end(function (err, res) {
-    if(err) {
-      callback(err);
-    }
-    console.log(res);
+    .set('Authorization', token)
+    .set('Content-Type', 'application/json')
+    .send(batchRequest)
+    .end(function (err, res) {
+      if(err) {
+        callback(err);
+      }
+      console.log(res);
   });
 }
 

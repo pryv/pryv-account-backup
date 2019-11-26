@@ -1,15 +1,15 @@
 /*
- * This file serves for debugging purpose.
+ * This script serves for debugging purpose.
  * It will launch a backup task without asking the user all the requested information
  * such as domain, username, password, etc.
  * Instead this values are fetched from dev-config.json
  */
 
-const backup = require('./main');
-const config = require('./utils/config.js');
+const backup = require('../src/main');
+const config = require('../src/utils/config.js');
 const params = config.get('params');
 const { URL } = require('url');
-const BackupDirectory = require('./methods/backup-directory');
+const BackupDirectory = require('../src/methods/backup-directory');
 const parseDomain = require("parse-domain");
 
 let domain;

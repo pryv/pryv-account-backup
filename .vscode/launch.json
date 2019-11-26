@@ -20,7 +20,16 @@
             "skipFiles": [
                 "<node_internals>/**"
             ],
-            "program": "${workspaceFolder}/src/kickstart.js"
+            "program": "${workspaceFolder}/scripts/kickstart.js"
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "deleteAll",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "program": "${workspaceFolder}/scripts/deleteAll.js"
         }
     ]
 }
