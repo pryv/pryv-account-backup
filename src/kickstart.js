@@ -29,14 +29,24 @@ catch(error) {
 params.backupDirectory = new BackupDirectory(params.username, domain);
 
 async function startAll() {
-    await startBackup();
+    // await startBackup();
+    await startRestore();
 }
 
 async function startBackup() {
     await backup.startBackup(params, done.bind(this, 'Backup'));
 }
 
-function done(str) {
+async function startRestore() {
+    // params.backupFolder = config.get("backupFolder");
+    await backup.startRestore(params, done.bind(this, 'Restore'));
+}
+
+function done(str, error) {
+    if(error) {
+        console.error('Error during ' + str, error);
+        return;
+    }
     console.log(str + ' completed');
 }
 

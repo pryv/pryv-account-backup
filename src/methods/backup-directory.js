@@ -79,3 +79,7 @@ BackupDirectory.prototype.deleteDirs = function (callback) {
     callback();
   }
 };
+
+BackupDirectory.prototype.checkDirs = function () {
+  return fs.existsSync(this.baseDir);
+};

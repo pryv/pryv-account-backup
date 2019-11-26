@@ -47,6 +47,16 @@ function startBackup (params, callback) {
   });
 };
 
+function startRestore (params, callback) {
+  signInToPryv(params, function(err, conn) {
+    if (err) {
+      console.log('Connection failed with Error:', err);
+      return callback(err);
+    }
+    startRestoreOnConnection(conn, params, callback);
+  });
+};
+
 function startBackupOnConnection (connection, params, callback, log) {
   const backupDirectory = params.backupDirectory;
 
@@ -119,10 +129,86 @@ function startBackupOnConnection (connection, params, callback, log) {
   });
 };
 
+function startRestoreOnConnection (connection, params, callback, log) {
+  const backupDirectory = params.backupDirectory;
+
+  if (!log) {
+    log = console.log;
+  }
+
+  async.series([
+    function checkBackupDirectory(done) {
+      if(backupDirectory.checkDirs()) {
+        done();
+      } else {
+        return callback(new Error('Restore directory doesn\'t exist : ' + backupDirectory.baseDir));
+      }
+    },
+    function restoreEvents (done) {
+      log('Starting Restore');
+
+      let eventsRequest = 'events?fromTime=-2350373077&toTime=2350373077';
+      let streamsRequest = 'streams';
+      if (params.includeTrashed) {
+        eventsRequest += '&state=all';
+        streamsRequest += '?state=all';
+      }
+
+      async.mapSeries([/*'account', streamsRequest, 'accesses',
+          'followed-slices', 'profile/private' , 'profile/public', */eventsRequest],
+        function (resource, callback) {
+          apiResources.fromJSONFile({
+            backupFolder: params.backupFolder,
+            folder: backupDirectory.baseDir,
+            resource: resource,
+            connection: connection
+          }, callback, log)
+        }, done);
+    },
+    function fetchAppProfiles (stepDone) {
+      return callback();
+      const accessesData = JSON.parse(fs.readFileSync(backupDirectory.accessesFile, 'utf8'));
+      async.mapSeries(accessesData.accesses, function(access, callback) {
+        if (access.type !== 'app') {
+          return callback();
+        }
+        const tempConnection = new pryv.Connection({
+          username: connection.username,
+          domain: connection.domain || connection.settings.domain,
+          auth: access.token
+        });
+        apiResources.toJSONFile({
+          folder: backupDirectory.appProfilesDir,
+          resource: 'profile/app',
+          extraFileName: '_' + access.id,
+          connection: tempConnection
+        }, callback, log);
+      },stepDone);
+    },
+    function fetchAttachments (stepDone) {
+      return callback();
+      if (params.includeAttachments) {
+        attachments.download(connection, backupDirectory, stepDone, log);
+      } else {
+        log('Skipping attachments');
+        stepDone();
+      }
+    }
+  ], function (err) {
+    if (err) {
+      log('Failed in process with error' + err);
+      return callback(err);
+    }
+    callback();
+  });
+};
+
 /**
  * Expose BackupDirectory as well since it is a parameter of .start()
  */
 exports.Directory = require('./methods/backup-directory');
 exports.signInToPryv = signInToPryv;
 exports.startBackupOnConnection = startBackupOnConnection;
+exports.startRestoreOnConnection = startRestoreOnConnection;
 exports.startBackup = startBackup;
+exports.startRestore = startRestore;

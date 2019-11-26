@@ -2,6 +2,7 @@
     "params": {
         "domain": "pryv.me",
         "domain2": "https://reg.pryv.me/service/info",
+        "backupFolder": "/tmp/backupPY/testuserco2.pryv.me/",
         "username": "testuserco2",
         "password": "testuserco2",
         "includeTrashed": false,
