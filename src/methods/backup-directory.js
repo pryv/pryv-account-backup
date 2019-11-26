@@ -1,6 +1,6 @@
-var mkdirp = require('mkdirp'),
-    fs = require('fs'),
-    async = require('async');
+const mkdirp = require('mkdirp');
+const fs = require('fs');
+const async = require('async');
 
 /**
  * Object containing backup directories and files object as well as the function to generate them
@@ -8,8 +8,8 @@ var mkdirp = require('mkdirp'),
  * @param username
  * @param domain
  */
-var BackupDirectory = module.exports = function (username, domain, dir) {
-  var rootDir = dir || '/tmp/backupPY/';
+const BackupDirectory = module.exports = function (username, domain, dir) {
+  const rootDir = dir || '/tmp/backupPY/';
   this.baseDir = rootDir + username + '.' + domain + '/';
   this.attachmentsDir = this.baseDir + 'attachments/';
   this.appProfilesDir = this.baseDir + 'app_profiles/';
@@ -73,7 +73,7 @@ BackupDirectory.prototype.createDirs = function (callback, log) {
  */
 BackupDirectory.prototype.deleteDirs = function (callback) {
   if(fs.existsSync(this.baseDir)) {
-    var exec = require('child_process').exec;
+    const exec = require('child_process').exec;
     exec('rm -r ' + this.baseDir, callback);
   } else {
     callback();

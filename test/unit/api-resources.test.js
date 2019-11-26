@@ -1,18 +1,18 @@
 /*global describe, it, before, after */
 
-var api = require('../../src/methods/api-resources'),
-    pryv = require('pryv'),
-    credentials = require('../helpers/testuser').credentials,
-    Directory = require('../../src/methods/backup-directory'),
-    fs = require('fs'),
-    async = require('async'),
-    should = require('should');
+const api = require('../../src/methods/api-resources');
+const pryv = require('pryv');
+const credentials = require('../helpers/testuser').credentials;
+const Directory = require('../../src/methods/backup-directory');
+const fs = require('fs');
+const async = require('async');
+const should = require('should');
 
 describe('api-resources', function () {
 
-    var connection = null,
-        BackupDirectory = null,
-        params = {
+    const connection = null;
+    const BackupDirectory = null;
+    const params = {
             folder: null,
             resource: null,
             connection: null
