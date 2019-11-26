@@ -130,18 +130,16 @@ function startBackupOnConnection (connection, params, callback, log) {
 };
 
 function startRestoreOnConnection (connection, params, callback, log) {
-  const backupDirectory = params.backupDirectory;
-
   if (!log) {
     log = console.log;
   }
 
   async.series([
     function checkBackupDirectory(done) {
-      if(backupDirectory.checkDirs()) {
+      if(params.backupFolder.checkDirs()) {
         done();
       } else {
-        return callback(new Error('Restore directory doesn\'t exist : ' + backupDirectory.baseDir));
+        return callback(new Error('Restore directory doesn\'t exist : '));
       }
     },
     function restoreEvents (done) {
@@ -159,7 +157,6 @@ function startRestoreOnConnection (connection, params, callback, log) {
         function (resource, callback) {
           apiResources.fromJSONFile({
             backupFolder: params.backupFolder,
-            folder: backupDirectory.baseDir,
             resource: resource,
             connection: connection
           }, callback, log)

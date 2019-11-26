@@ -26,7 +26,6 @@ catch(error) {
     }
     domain = params.domain; // it is not, use it as a domain
 }
-params.backupDirectory = new BackupDirectory(params.username, domain);
 
 async function startAll() {
     // await startBackup();
@@ -34,11 +33,12 @@ async function startAll() {
 }
 
 async function startBackup() {
+    params.backupDirectory = new BackupDirectory(params.username, domain);
     await backup.startBackup(params, done.bind(this, 'Backup'));
 }
 
 async function startRestore() {
-    // params.backupFolder = config.get("backupFolder");
+    params.backupFolder = new BackupDirectory(params.backupUsername, domain);
     await backup.startRestore(params, done.bind(this, 'Restore'));
 }
 

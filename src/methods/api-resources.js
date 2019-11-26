@@ -88,90 +88,58 @@ exports.fromJSONFile = function streamFileToApi(params, callback, log) {
   }
 
   log('Fetching: ' + params.resource + params.extraFileName );
-  let outputFilename = null;
-  let writeStream = null;
 
-  function openStreamsIfNeeded() {
-    if (outputFilename){
-      return;
-    }
-    outputFilename = params.resource.replace('/', '_').split('?')[0] + params.extraFileName + '.json';
-    writeStream = fs.createWriteStream(params.folder  + outputFilename, { encoding: 'utf8' });
-  }
-
-  const apiUrl = 'https://' + connection.username + '.' + connection.settings.domain + '/events';
-
-  // --- pretty timed log ---//
-  const timeRepeat = 1000;
-  let total = 0;
-  let done = false;
-  const timeLog = function() {
-    if (done) return;
-    log('Fetching ' + outputFilename + ': ' +  prettyPrint(total));
-    setTimeout(timeLog, timeRepeat);
-  }
-  setTimeout(timeLog, timeRepeat);
-
+  const apiUrl = 'https://' + connection.username + '.' + connection.settings.domain + '/';
   const backupFolder = params.backupFolder;
-  const fileName = params.resource.replace(/\?.*/g, '');
-
-  const jsonFile = backupFolder + fileName + '.json';
+  const resource = params.resource.replace(/\?.*/g, '');
+  const jsonFile = backupFolder.eventsFile;// + fileName + '.json';
   const stream = fs.createReadStream(jsonFile, {encoding: 'utf8'});
+  batchSize = 2;
+  parseJsonAndPost(stream, resource, batchSize, apiUrl, connection.auth, callback);
+}
 
-  stream.pipe(JSONStream.parse('events.*'))
+function parseJsonAndPost(stream, resource, batchSize, apiUrl, token, callback) {
+  const batchRequest = [];
+  stream.pipe(JSONStream.parse(resource + '.*'))
     .on('data', (event) => {
       delete event.attachments;
       delete event.id;
       console.log(JSON.stringify(event, null, 2));
-      superagent.post(apiUrl)
-        .set('Authorization', connection.auth)
-        .set('Content-Type', 'application/json')
-        .send(event)
-        .end(function (err, res) {
-          if(err) {
-            callback(err);
-          }
-          console.log(res);
-        });
+      batchRequest.push({
+        "method": "events.create",
+        "params": event
+      });
+
+      if(batchRequest.length >= batchSize) {
+        batchCall(apiUrl, token, batchRequest, callback);
+        batchRequest.length = 0;
+        return callback();
+      }
     })
     .on('error', (error) => {
       console.error(error);
       return callback(error);
     })
     .on('end', () => {
+      if(batchRequest.length > 0) {
+        batchCall(apiUrl, token, batchRequest, callback);
+        batchRequest.length = 0;
+      }
       return callback();
-    });
-  // return callback();
+    }); 
+}
 
-  // https.get(options, function (res) {
-  //   if (res.statusCode != 200) {
-  //     log('Error while fetching https://' + options.host + options.path + ' Code: ' + res.statusCode + ' ' + res.statusMessage);
-  //     done = true;
-  //     callback(res.statusCode);
-  //     return;
-  //   };
-  //   res.setEncoding('utf8');
-
-  //   res.on('data', function (chunk) {
-  //     openStreamsIfNeeded();
-  //     total += chunk.length;
-  //     writeStream.write(chunk);
-  //   });
-
-  //   res.on('end', function () {
-  //     openStreamsIfNeeded();
-  //     writeStream.end();
-  //     done = true;
-  //     log('Received: ' + outputFilename + ' '  + prettyPrint(total));
-  //     callback();
-  //   });
-
-  // }).on('error', function (e) {
-  //   if (done) return;
-  //   done = true;
-  //   log('Error while fetching https://' + options.host + options.path);
-  //   callback(e);
-  // });
+function batchCall(apiUrl, token, batchRequest, callback) {
+  superagent.post(apiUrl)
+  .set('Authorization', token)
+  .set('Content-Type', 'application/json')
+  .send(batchRequest)
+  .end(function (err, res) {
+    if(err) {
+      callback(err);
+    }
+    console.log(res);
+  });
 }
 
 function prettyPrint(total) {
