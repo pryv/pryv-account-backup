@@ -152,8 +152,7 @@ function startRestoreOnConnection (connection, params, callback, log) {
         streamsRequest += '?state=all';
       }
 
-      async.mapSeries([/*'account', streamsRequest, 'accesses',
-          'followed-slices', 'profile/private' , 'profile/public', */eventsRequest],
+      async.mapSeries([streamsRequest, eventsRequest],
         function (resource, callback) {
           apiResources.fromJSONFile({
             backupFolder: params.backupFolder,

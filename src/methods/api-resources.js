@@ -87,33 +87,32 @@ exports.fromJSONFile = function streamFileToApi(params, callback, log) {
     log = console.log;
   }
 
-  log('Fetching: ' + params.resource + params.extraFileName );
-
   const apiUrl = 'https://' + connection.username + '.' + connection.settings.domain + '/';
   const backupFolder = params.backupFolder;
   const resource = params.resource.replace(/\?.*/g, '');
-  const jsonFile = backupFolder.eventsFile;// + fileName + '.json';
+  const jsonFile = backupFolder.baseDir + resource + '.json';
   const stream = fs.createReadStream(jsonFile, {encoding: 'utf8'});
-  batchSize = 2;
+  batchSize = 50;
   parseJsonAndPost(stream, resource, batchSize, apiUrl, connection.auth, callback);
 }
 
 function parseJsonAndPost(stream, resource, batchSize, apiUrl, token, callback) {
   const batchRequest = [];
   stream.pipe(JSONStream.parse(resource + '.*'))
-    .on('data', (event) => {
-      delete event.attachments;
-      delete event.id;
-      console.log(JSON.stringify(event, null, 2));
+    .on('data', (item) => {
+      if(resource.indexOf('events') > -1) {
+        delete item.attachments;
+        delete item.id;
+      }
+
       batchRequest.push({
-        "method": "events.create",
-        "params": event
+        'method': resource + '.create',
+        'params': item
       });
 
       if(batchRequest.length >= batchSize) {
-        batchCall(apiUrl, token, batchRequest, callback);
+        batchCall(apiUrl, token, batchRequest, resource, null);
         batchRequest.length = 0;
-        return callback();
       }
     })
     .on('error', (error) => {
@@ -122,24 +121,46 @@ function parseJsonAndPost(stream, resource, batchSize, apiUrl, token, callback) 
     })
     .on('end', () => {
       if(batchRequest.length > 0) {
-        batchCall(apiUrl, token, batchRequest, callback);
+        batchCall(apiUrl, token, batchRequest, resource, callback);
         batchRequest.length = 0;
       }
-      return callback();
+      else {
+        return callback(); // TODO mieux
+      }
     }); 
 }
 
-function batchCall(apiUrl, token, batchRequest, callback) {
+function batchCall(apiUrl, token, batchRequest, resource, callback) {
+  console.log('Restoring ' + batchRequest.length + ' ' + resource);
   superagent.post(apiUrl)
     .set('Authorization', token)
     .set('Content-Type', 'application/json')
     .send(batchRequest)
     .end(function (err, res) {
       if(err) {
-        callback(err);
+        console.error(err);
       }
-      console.log(res);
-  });
+      const results = res.body.results;
+      let nbOk = 0;
+      let nbKo = 0;
+      results.forEach(result => {
+        if(result.error) {
+          console.error(result.error.message);
+          nbKo++;
+        } else {
+          nbOk++;
+        }
+      });
+      if(nbOk > 0) {
+        console.info(nbOk + ' ' + resource + ' restored');
+      }
+      if(nbKo > 0) {
+        console.warn(nbKo + ' ' + resource + ' not restored (see errors above)');
+      }
+      if(callback) {
+        callback();
+      }
+    });
 }
 
 function prettyPrint(total) {

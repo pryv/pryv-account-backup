@@ -40,38 +40,40 @@ async function deleteAll() {
 
     const token = conn.auth;
     const baseUrl = 'https://' + params.username + '.' + params.domain + '/';
-    let events;
-    try {
-        const res = await superagent.get(baseUrl + 'events')
-            .set('Authorization', token)
-            .set('Content-Type', 'application/json')
-            .send({"state": "all"});
-        events = res.body.events;
-    } catch (error) {
-        console.error(error);
-        return;
-    }
-    // console.log(JSON.stringify(events, null, 2));
+    // await deleteResources('events', baseUrl, token);
+    await deleteResources('streams', baseUrl, token);
 
-    await asyncForEach(events, async (event) => {
-        console.log('deleting ' + event.id);
-        await deleteEvent(baseUrl + 'events/' + event.id, token);
-    });
-    console.log('fini');
-    
+    console.log('Delete complete');    
 }
 
-async function deleteEvent(apiUrl, token) {
+async function deleteResources(resource, baseUrl, token) {
+    // console.log ('TOKEN : '+token);
+    let items;
     try {
-        for(let i = 0; i < 2; i ++) {
-            await superagent.delete(apiUrl)
-                .set('Authorization', token)
-                .set('Content-Type', 'application/json');
-        }
+        const res = await superagent.get(baseUrl + resource + '?state=all')
+            .set('Authorization', token)
+            .set('Content-Type', 'application/json');
+        items = res.body[resource];
     } catch (error) {
         console.error(error);
         return;
     }
+
+    console.log('Deleting ' + items.length + ' ' +resource);
+
+    await asyncForEach(items, async (item) => {
+        console.log('\tdeleting ' + item.id);
+        try {
+            for(let i = 0; i < 2; i++) { // First delete only trash the item
+                await superagent.delete(baseUrl + resource + '/' + item.id + '?mergeEventsWithParent=false')
+                    .set('Authorization', token)
+                    .set('Content-Type', 'application/json');
+                console.log('\t\tpass ' + (i+1) + ' ok');
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    });
 }
 
 async function asyncForEach(array, callback) {
