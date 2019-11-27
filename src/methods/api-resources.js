@@ -89,30 +89,33 @@ exports.fromJSONFile = function streamFileToApi(params, callback, log) {
 
   const apiUrl = 'https://' + connection.username + '.' + connection.settings.domain + '/';
   const backupFolder = params.backupFolder;
+  const attachementBasePath = backupFolder.baseDir + 'attachments/';
   const resource = params.resource.replace(/\?.*/g, '');
   const jsonFile = backupFolder.baseDir + resource + '.json';
   const stream = fs.createReadStream(jsonFile, {encoding: 'utf8'});
   batchSize = 50;
-  parseJsonAndPost(stream, resource, batchSize, apiUrl, connection.auth, callback);
+  parseJsonAndPost(stream, resource, batchSize, apiUrl, connection.auth, attachementBasePath, callback);
 }
 
-function parseJsonAndPost(stream, resource, batchSize, apiUrl, token, callback) {
+function parseJsonAndPost(stream, resource, batchSize, apiUrl, token, attachementBasePath, callback) {
   const batchRequest = [];
+  const eventWithAttachments = [];
   stream.pipe(JSONStream.parse(resource + '.*'))
     .on('data', (item) => {
-      if(resource.indexOf('events') > -1) {
-        delete item.attachments;
+
+      if(item.attachments) {
+        eventWithAttachments.push(item);
+      } else {
         delete item.id;
-      }
-
-      batchRequest.push({
-        'method': resource + '.create',
-        'params': item
-      });
-
-      if(batchRequest.length >= batchSize) {
-        batchCall(apiUrl, token, batchRequest, resource, null);
-        batchRequest.length = 0;
+        batchRequest.push({
+          'method': resource + '.create',
+          'params': item
+        });
+  
+        if(batchRequest.length >= batchSize) {
+          batchCall(apiUrl, token, batchRequest, resource, null);
+          batchRequest.length = 0;
+        }
       }
     })
     .on('error', (error) => {
@@ -120,12 +123,16 @@ function parseJsonAndPost(stream, resource, batchSize, apiUrl, token, callback) 
       return callback(error);
     })
     .on('end', () => {
+      const cb = callback;
       if(batchRequest.length > 0) {
+        if(eventWithAttachments.length > 0) {
+          callback = null;
+        }
         batchCall(apiUrl, token, batchRequest, resource, callback);
         batchRequest.length = 0;
       }
-      else {
-        return callback(); // TODO mieux
+      if(eventWithAttachments.length > 0) {
+        postEventWithAttachments(apiUrl, token, eventWithAttachments, attachementBasePath, cb);
       }
     }); 
 }
@@ -145,22 +152,49 @@ function batchCall(apiUrl, token, batchRequest, resource, callback) {
       let nbKo = 0;
       results.forEach(result => {
         if(result.error) {
-          console.error(result.error.message);
+          console.error('\t' + result.error.message);
           nbKo++;
         } else {
           nbOk++;
         }
       });
       if(nbOk > 0) {
-        console.info(nbOk + ' ' + resource + ' restored');
+        console.info('\t' + nbOk + ' ' + resource + ' restored');
       }
       if(nbKo > 0) {
-        console.warn(nbKo + ' ' + resource + ' not restored (see errors above)');
+        console.warn('\t' + nbKo + ' ' + resource + ' not restored (see errors above)');
       }
       if(callback) {
         callback();
       }
     });
+}
+
+function postEventWithAttachments(apiUrl, token, eventWithAttachments, attachementBasePath, callback) {
+  apiUrl = apiUrl + 'events';
+
+  eventWithAttachments.forEach((event) => {
+    const attachments = event.attachments;
+    const eventId = event.id;
+    delete event.attachments;
+    delete event.id;
+
+    const req = superagent.post(apiUrl)
+      .set('Authorization', token)
+      .field('event', JSON.stringify(event));
+    
+    attachments.forEach((attachment)=> {
+      req.attach('', attachementBasePath + eventId + '_' + attachment.fileName);
+    });
+
+    req.end(function (err, res) {
+        console.log(res.body.event.attachments.length + ' file(s) attached');
+        res.body.event.attachments.forEach((attachement) => {
+          console.log('\t' + attachement.fileName);
+        });
+    });
+  });
+  callback();
 }
 
 function prettyPrint(total) {

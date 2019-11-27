@@ -152,7 +152,7 @@ function startRestoreOnConnection (connection, params, callback, log) {
         streamsRequest += '?state=all';
       }
 
-      async.mapSeries([streamsRequest, eventsRequest],
+    async.mapSeries([streamsRequest, eventsRequest],
         function (resource, callback) {
           apiResources.fromJSONFile({
             backupFolder: params.backupFolder,
@@ -160,35 +160,6 @@ function startRestoreOnConnection (connection, params, callback, log) {
             connection: connection
           }, callback, log)
         }, done);
-    },
-    function fetchAppProfiles (stepDone) {
-      return callback();
-      const accessesData = JSON.parse(fs.readFileSync(backupDirectory.accessesFile, 'utf8'));
-      async.mapSeries(accessesData.accesses, function(access, callback) {
-        if (access.type !== 'app') {
-          return callback();
-        }
-        const tempConnection = new pryv.Connection({
-          username: connection.username,
-          domain: connection.domain || connection.settings.domain,
-          auth: access.token
-        });
-        apiResources.toJSONFile({
-          folder: backupDirectory.appProfilesDir,
-          resource: 'profile/app',
-          extraFileName: '_' + access.id,
-          connection: tempConnection
-        }, callback, log);
-      },stepDone);
-    },
-    function fetchAttachments (stepDone) {
-      return callback();
-      if (params.includeAttachments) {
-        attachments.download(connection, backupDirectory, stepDone, log);
-      } else {
-        log('Skipping attachments');
-        stepDone();
-      }
     }
   ], function (err) {
     if (err) {

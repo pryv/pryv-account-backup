@@ -6,6 +6,6 @@
         "username": "testimport",
         "password": "testimport",
         "includeTrashed": false,
-        "includeAttachments": false
+        "includeAttachments": true
     }
 }
