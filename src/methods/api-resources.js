@@ -93,7 +93,7 @@ exports.fromJSONFile = function streamFileToApi(params, callback, log) {
   const resource = params.resource.replace(/\?.*/g, '');
   const jsonFile = backupFolder.baseDir + resource + '.json';
   const stream = fs.createReadStream(jsonFile, {encoding: 'utf8'});
-  batchSize = 50;
+  batchSize = 500;
   parseJsonAndPost(stream, resource, batchSize, apiUrl, connection.auth, attachementBasePath, callback);
 }
 
@@ -106,7 +106,9 @@ function parseJsonAndPost(stream, resource, batchSize, apiUrl, token, attachemen
       if(item.attachments) {
         eventWithAttachments.push(item);
       } else {
-        delete item.id;
+        if(resource.indexOf('events') >= 0) {
+          delete item.id; // Only delete event id
+        }
         batchRequest.push({
           'method': resource + '.create',
           'params': item
@@ -188,10 +190,14 @@ function postEventWithAttachments(apiUrl, token, eventWithAttachments, attacheme
     });
 
     req.end(function (err, res) {
+      if(err) {
+        console.error(err);
+      } else {
         console.log(res.body.event.attachments.length + ' file(s) attached');
         res.body.event.attachments.forEach((attachement) => {
           console.log('\t' + attachement.fileName);
         });
+      }
     });
   });
   callback();
