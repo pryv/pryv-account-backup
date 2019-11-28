@@ -2,6 +2,11 @@ const fs = require('fs');
 const https = require('https');
 const superagent = require('superagent');
 const JSONStream = require('JSONStream');
+const transformStream = require('../utils/transform.js').transformStream;
+const transformEvent = require('../utils/transform.js').transformEvent;
+
+const maxConcurrentBatch = 1;
+let currentRunningBatch = 0;
 
 /**
  * Downloads the requested Pryv API resource and saves it to a local file under the name
@@ -102,20 +107,23 @@ function parseJsonAndPost(stream, resource, batchSize, apiUrl, token, attachemen
   const eventWithAttachments = [];
   stream.pipe(JSONStream.parse(resource + '.*'))
     .on('data', (item) => {
-
       if(item.attachments) {
         eventWithAttachments.push(item);
       } else {
         if(resource.indexOf('events') >= 0) {
-          delete item.id; // Only delete event id
+          item = transformEvent(item);
+        } else if(resource.indexOf('streams') >= 0) {
+          item = transformStream(item);
         }
+
         batchRequest.push({
           'method': resource + '.create',
           'params': item
         });
+        addChildToBatch(batchRequest, item, resource);
   
         if(batchRequest.length >= batchSize) {
-          batchCall(apiUrl, token, batchRequest, resource, null);
+          batchCall(apiUrl, token, Array.from(batchRequest), resource, callback);
           batchRequest.length = 0;
         }
       }
@@ -125,48 +133,56 @@ function parseJsonAndPost(stream, resource, batchSize, apiUrl, token, attachemen
       return callback(error);
     })
     .on('end', () => {
-      const cb = callback;
       if(batchRequest.length > 0) {
-        if(eventWithAttachments.length > 0) {
-          callback = null;
-        }
-        batchCall(apiUrl, token, batchRequest, resource, callback);
+        batchCall(apiUrl, token, Array.from(batchRequest), resource, callback);
         batchRequest.length = 0;
       }
       if(eventWithAttachments.length > 0) {
-        postEventWithAttachments(apiUrl, token, eventWithAttachments, attachementBasePath, cb);
+        postEventWithAttachments(apiUrl, token, eventWithAttachments, attachementBasePath, callback);
       }
     }); 
 }
 
 function batchCall(apiUrl, token, batchRequest, resource, callback) {
+  if(currentRunningBatch >= maxConcurrentBatch) {
+    // console.log(currentRunningBatch + ' batchs currently running. Waiting...');
+    setTimeout(function() {
+      batchCall(apiUrl, token, batchRequest, resource, callback);
+    }, 2000);
+    return;
+  }
+  currentRunningBatch++;
+
   console.log('Restoring ' + batchRequest.length + ' ' + resource);
   superagent.post(apiUrl)
     .set('Authorization', token)
     .set('Content-Type', 'application/json')
     .send(batchRequest)
     .end(function (err, res) {
+      currentRunningBatch--;
       if(err) {
         console.error(err);
       }
-      const results = res.body.results;
-      let nbOk = 0;
-      let nbKo = 0;
-      results.forEach(result => {
-        if(result.error) {
-          console.error('\t' + result.error.message);
-          nbKo++;
-        } else {
-          nbOk++;
+      if(res.body.results) {
+        const results = res.body.results;
+        let nbOk = 0;
+        let nbKo = 0;
+        results.forEach(result => {
+          if(result.error) {
+            console.error('\t' + result.error.message);
+            nbKo++;
+          } else {
+            nbOk++;
+          }
+        });
+        if(nbOk > 0) {
+          console.info('\t' + nbOk + ' ' + resource + ' restored');
         }
-      });
-      if(nbOk > 0) {
-        console.info('\t' + nbOk + ' ' + resource + ' restored');
+        if(nbKo > 0) {
+          console.warn('\t' + nbKo + ' ' + resource + ' not restored (see errors above)');
+        }
       }
-      if(nbKo > 0) {
-        console.warn('\t' + nbKo + ' ' + resource + ' not restored (see errors above)');
-      }
-      if(callback) {
+      if(currentRunningBatch == 0) {
         callback();
       }
     });
@@ -189,7 +205,9 @@ function postEventWithAttachments(apiUrl, token, eventWithAttachments, attacheme
       req.attach('', attachementBasePath + eventId + '_' + attachment.fileName);
     });
 
+    currentRunningBatch++;
     req.end(function (err, res) {
+      currentRunningBatch--;
       if(err) {
         console.error(err);
       } else {
@@ -200,7 +218,24 @@ function postEventWithAttachments(apiUrl, token, eventWithAttachments, attacheme
       }
     });
   });
-  callback();
+  if(currentRunningBatch == 0) {
+    callback();
+  }
+}
+
+function addChildToBatch(batchRequest, item, resource) {
+  if(!item.children || !item.children.length > 0) {
+    return;
+  }
+  
+  item.children.forEach((child) => {
+    batchRequest.push({
+      'method': resource + '.create',
+      'params': child
+    });
+
+    addChildToBatch(batchRequest, child, resource); // Recursiv
+  });
 }
 
 function prettyPrint(total) {

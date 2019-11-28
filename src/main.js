@@ -142,7 +142,7 @@ function startRestoreOnConnection (connection, params, callback, log) {
         return callback(new Error('Restore directory doesn\'t exist : '));
       }
     },
-    function restoreEvents (done) {
+    function restoreStreamsAndEvents (done) {
       log('Starting Restore');
 
       let eventsRequest = 'events?fromTime=-2350373077&toTime=2350373077';
@@ -152,7 +152,7 @@ function startRestoreOnConnection (connection, params, callback, log) {
         streamsRequest += '?state=all';
       }
 
-    async.mapSeries([streamsRequest, eventsRequest],
+      async.mapSeries([streamsRequest, eventsRequest],
         function (resource, callback) {
           apiResources.fromJSONFile({
             backupFolder: params.backupFolder,

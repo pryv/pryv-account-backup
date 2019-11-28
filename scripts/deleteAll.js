@@ -47,7 +47,6 @@ async function deleteAll() {
 }
 
 async function deleteResources(resource, baseUrl, token) {
-    // console.log ('TOKEN : '+token);
     let items;
     try {
         const res = await superagent.get(baseUrl + resource + '?state=all')

@@ -58,7 +58,7 @@ async.series([
     }
   },
   function doBackup(stepDone) {
-    backup.start(authSettings, stepDone);
+    backup.startBackup(authSettings, stepDone);
   }
 ], function (err) {
   if (err) {

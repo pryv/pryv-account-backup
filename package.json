@@ -21,7 +21,8 @@
     "name": "Pryv"
   },
   "scripts": {
-    "start": "node scripts/start-backup.js",
+    "backup": "node scripts/start-backup.js",
+    "restore": "node scripts/start-restore.js",
     "test": "./node_modules/mocha/bin/mocha test/**/*.test.js",
     "test-travis": "./node_modules/istanbul/lib/cli.js cover ./node_modules/mocha/bin/_mocha -- -R spec ./test/**/*.test.js"
   },
@@ -42,7 +43,8 @@
     "nconf": "^0.6.x",
     "winston": "^0.6.x",
     "parse-domain": "^2.3.4",
-    "bluebird": "^3.7.1"
+    "bluebird": "^3.7.1",
+    "slug": "^1.1.0"
   },
   "devDependencies": {
     "coveralls": "^3.0.3",
