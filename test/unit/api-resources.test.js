@@ -15,16 +15,16 @@ describe('api-resources', function () {
     const params = {
             folder: null,
             resource: null,
-            connection: null
+            connection: null,
+            apiUrl: null
         };
-    let apiUrl;
 
     before(function (done) {
-        apiUrl = credentials.username + '.' + credentials.domain;
         connection = new pryv.Connection(credentials);
         BackupDirectory = new Directory(credentials.username,credentials.domain);
         params.folder = BackupDirectory.baseDir;
         params.connection = connection;
+        params.apiUrl = credentials.username + '.' + credentials.domain;
 
         async.series([
             BackupDirectory.deleteDirs,
@@ -41,7 +41,7 @@ describe('api-resources', function () {
 
         params.resource = 'streams';
 
-        api.toJSONFile(apiUrl, params, function(err) {
+        api.toJSONFile(params, function(err) {
             should.not.exist(err);
             fs.existsSync(params.folder+'/'+params.resource+'.json').should.equal(true);
             done();
@@ -52,7 +52,7 @@ describe('api-resources', function () {
 
         params.resource = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000 + '&state=all';
 
-        api.toJSONFile(apiUrl, params, function(err) {
+        api.toJSONFile(params, function(err) {
             should.not.exist(err);
             fs.existsSync(params.folder+'/'+'events.json').should.equal(true);
             done();
@@ -63,7 +63,7 @@ describe('api-resources', function () {
 
         params.resource = 'notvalid';
 
-        api.toJSONFile(apiUrl, params, function(err, res) {
+        api.toJSONFile(params, function(err, res) {
             should.exist(err);
             fs.existsSync(params.folder+'/'+params.resource+'.json').should.equal(false);
             done();

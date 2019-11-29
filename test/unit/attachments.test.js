@@ -13,10 +13,8 @@ describe('attachments', function () {
 
     let connection = null;
     let BackupDirectory = null;
-    let apiUrl;
 
     before(function (done) {
-        apiUrl = credentials.username + '.' + credentials.domain;
         connection = new pryv.Connection(credentials);
         BackupDirectory = new Directory(credentials.username,credentials.domain);
         async.series([
@@ -28,9 +26,10 @@ describe('attachments', function () {
                     const params = {
                         folder: BackupDirectory.baseDir,
                         resource: 'events',
-                        connection: connection
+                        connection: connection,
+                        apiUrl: credentials.username + '.' + credentials.domain
                     };
-                    api.toJSONFile(apiUrl, params, stepDone);
+                    api.toJSONFile(params, stepDone);
                 }
             ], done);
     });

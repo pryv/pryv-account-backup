@@ -3,7 +3,6 @@ const async = require('async');
 const read = require('read');
 const backup = require('../src/main');
 const BackupDirectory = require('../src/methods/backup-directory');
-
 const authSettings = {};
 
 async.series([
@@ -57,8 +56,8 @@ async.series([
       done();
     }
   },
-  async function doBackup(stepDone) {
-    await backup.start(authSettings, stepDone);
+  function doBackup(stepDone) {
+    backup.start(authSettings, stepDone);
   }
 ], function (err) {
   if (err) {

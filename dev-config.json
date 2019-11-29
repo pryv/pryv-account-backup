@@ -1,9 +1,10 @@
 {
     "params": {
+        "domain2": "pryv.me",
         "domain": "https://reg.pryv.me/service/info",
-        "username": "testuser",
-        "password": "testuser",
+        "username": "testuserco2",
+        "password": "testuserco2",
         "includeTrashed": false,
-        "includeAttachments": false
+        "includeAttachments": true
     }
 }

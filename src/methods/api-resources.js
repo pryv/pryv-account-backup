@@ -1,4 +1,4 @@
-const fs = require('fs'); 
+const fs = require('fs');
 const https = require('https');
 
 /**
@@ -11,7 +11,7 @@ const https = require('https');
  *        params.baseDir {string} directory containing user backup data
  * @param callback
  */
-exports.toJSONFile = function streamApiToFile(apiUrl, params, callback, log) {
+exports.toJSONFile = function streamApiToFile(params, callback, log) {
   connection = params.connection;
   params.extraFileName =  params.extraFileName || '';
   if (!log) {
@@ -28,7 +28,7 @@ exports.toJSONFile = function streamApiToFile(apiUrl, params, callback, log) {
      writeStream = fs.createWriteStream(params.folder  + outputFilename, { encoding: 'utf8' });
   }
 
-  apiUrl = apiUrl.replace('https://', '').replace(/\/$/, ''); // remove protocol and trailing slash to be 'https.get' compatible
+  const apiUrl = params.apiUrl.replace('https://', '').replace(/\/$/, '');
   const options = {
     host: apiUrl,
     port: connection.settings.port,

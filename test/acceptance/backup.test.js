@@ -19,6 +19,7 @@ describe('backup', function () {
     settings = {
       username: credentials.username,
       domain: credentials.domain,
+      apiUrl: credentials.username + '.' + credentials.domain,
       password: credentials.password,
       includeTrashed: true,
       includeAttachments: true,
@@ -45,8 +46,8 @@ describe('backup', function () {
   it('should backup the correct folders and files', function (done) {
     const time = Date.now()/1000;
     async.series([
-        async function startBackup(stepDone) {
-          await backup.start(settings, stepDone);
+        function startBackup(stepDone) {
+          backup.start(settings, stepDone);
         },
         function checkFiles(stepDone) {
           resources.forEach(function(resource){

@@ -4,13 +4,14 @@ const async = require('async');
 const _ = require('lodash');
 const apiResources = require('./methods/api-resources');
 const attachments = require('./methods/attachments');
+const config = require('./utils/config.js');
 const { URL } = require('url');
 const superagent = require('superagent');
-const config = require('./utils/config.js');
 const parseDomain = require("parse-domain");
 const Promise = require("bluebird");
 
-async function signInToPryv (params) {
+let apiUrl;
+async function signInToPryv (params, callback) {
   params = _.extend({
     appId: 'pryv-backup',
     username: null,
@@ -21,41 +22,38 @@ async function signInToPryv (params) {
     includeTrashed: false,
     includeAttachments: false
   }, params);
-  
-  let apiUrl;
-  try {
-    new URL(params.domain); // Check if params.domain is a valid url
-    
-    const parsedDomain = parseDomain(params.domain); // it is --> we can extract the domain from it
+
+  try { // service info
+    const serviceInfoUrl = params.domain;
+    new URL(serviceInfoUrl); // Check if serviceInfoUrl is a valid url
+
+    const parsedDomain = parseDomain(serviceInfoUrl);
     params.domain = parsedDomain.domain + '.' + parsedDomain.tld;
-    apiUrl = await fetchApiUrl(params.domain, params.username);
+    apiUrl = await fetchApiUrl(serviceInfoUrl, params.username);
   }
-  catch(error) {
+  catch(error) { // domain
     if(error.code !== 'ERR_INVALID_URL') {
       console.error(error); // Unknown error
       return;
     }
-    apiUrl = params.username + '.' + params.domain; // it is not, use it as a domain
+    apiUrl = params.username + '.' + params.domain;
   }
-  
   params.origin = 'https://sw.' + params.domain;
+
   console.log('Connecting to ' + apiUrl);
-  const conn = await Promise.fromCallback(function(callback) {
-    return pryv.Connection.login(params, callback);
-  });
-  
-  return [conn, apiUrl];
+
+  pryv.Connection.login(params, callback);
 }
 
 async function fetchApiUrl(serviceInfoUrl, username) {
-    try {
-      const serviceInfoRes = await superagent.get(serviceInfoUrl);
-      return serviceInfoRes.body.api.replace('{username}', username)
-    } catch (error) {
-      console.error('Unable to reach service info at ' + serviceInfoUrl + ' : ' + JSON.stringify(error, null, 2));
-    }
-    return '';
+  try {
+    const serviceInfoRes = await superagent.get(serviceInfoUrl);
+    return serviceInfoRes.body.api.replace('{username}', username)
+  } catch (error) {
+    console.error('Unable to reach service info at ' + serviceInfoUrl + ' : ' + JSON.stringify(error, null, 2));
   }
+  return '';
+}
 
 /**
  * Downloads the user data in folder `./backup/username.domain/`
@@ -69,19 +67,14 @@ async function fetchApiUrl(serviceInfoUrl, username) {
  *        params.backupDirectory {backup-directory}
  * @param callback {function}
  */
-exports.start = async function (params, callback) {
-  let conn;
-  let apiUrl;
-  try {
-    [conn, apiUrl] = await signInToPryv(params);
-    params.apiUrl = apiUrl;
-  }
-  catch(error) {
-    console.log('Connection failed with Error:', error);
-    return callback(error);
-  }
-  
-  startOnConnection(conn, params, callback);
+exports.start = function (params, callback) {
+  signInToPryv(params, function(err, conn) {
+    if (err) {
+      console.log('Connection failed with Error:', err);
+      return callback(err);
+    }
+    startOnConnection(conn, params, callback);
+  });
 };
 
 function startOnConnection (connection, params, callback, log) {
@@ -113,11 +106,11 @@ function startOnConnection (connection, params, callback, log) {
       async.mapSeries(['account', streamsRequest, 'accesses',
           'followed-slices', 'profile/private' , 'profile/public', eventsRequest],
         function (resource, callback) {
-          apiResources.toJSONFile(params.apiUrl, 
-          {
+          apiResources.toJSONFile({
             folder: backupDirectory.baseDir,
             resource: resource,
-            connection: connection
+            connection: connection,
+            apiUrl: apiUrl
           }, callback, log)
         }, done);
     },
@@ -132,11 +125,12 @@ function startOnConnection (connection, params, callback, log) {
           domain: connection.domain || connection.settings.domain,
           auth: access.token
         });
-        apiResources.toJSONFile(params.apiUrl, {
+        apiResources.toJSONFile({
           folder: backupDirectory.appProfilesDir,
           resource: 'profile/app',
           extraFileName: '_' + access.id,
-          connection: tempConnection
+          connection: tempConnection,
+          apiUrl: apiUrl
         }, callback, log);
       },stepDone);
     },
