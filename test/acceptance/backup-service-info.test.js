@@ -26,16 +26,14 @@ describe('backup with service info', function () {
       appId: 'pryv-backup'
     };
 
-    settings.origin = 'https://sw.' + settings.domain;
-    settings.backupDirectory = new backup.Directory(settings.username, settings.domain);
-    // console.log('settings : '+JSON.stringify(settings, null, 2));
-
     const eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000 + '&state=all';
     const streamsRequest = 'streams?state=all';
     resources = ['account', streamsRequest, 'accesses', 'followed-slices', 'profile/public', eventsRequest];
     
     const parsedDomain = parseDomain(settings.domain);
     settings.domain = parsedDomain.domain + '.' + parsedDomain.tld;
+    settings.origin = 'https://sw.' + settings.domain;
+    settings.backupDirectory = new backup.Directory(settings.username, settings.domain);
 
     pryv.Connection.login(settings, function (err, conn) {
       connection = conn;
