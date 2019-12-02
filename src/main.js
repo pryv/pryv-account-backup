@@ -4,11 +4,9 @@ const async = require('async');
 const _ = require('lodash');
 const apiResources = require('./methods/api-resources');
 const attachments = require('./methods/attachments');
-const config = require('./utils/config.js');
 const { URL } = require('url');
 const superagent = require('superagent');
 const parseDomain = require("parse-domain");
-const Promise = require("bluebird");
 
 let apiUrl;
 async function signInToPryv (params, callback) {

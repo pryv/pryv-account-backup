@@ -5,11 +5,11 @@
  * Instead this values are fetched from dev-config.json
  */
 
-const backup = require('./main');
-const config = require('./utils/config.js');
+const backup = require('../src/main');
+const config = require('../src/utils/config.js');
 const params = config.get('params');
 const { URL } = require('url');
-const BackupDirectory = require('./methods/backup-directory');
+const BackupDirectory = require('../src/methods/backup-directory');
 const parseDomain = require("parse-domain");
 
 let domain;
