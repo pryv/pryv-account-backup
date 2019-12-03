@@ -1,11 +1,12 @@
 /*global describe, it, before, after */
 
 const backup = require('../../src/main');
-const credentials = require('../helpers/testuser').credentials;
+const testuser = require('../helpers/testuser');
+const credentials = testuser.credentials;
 const async = require('async');
 const fs = require('fs');
 const should = require('should');
-const pryv = require('pryv');
+const superagent = require('superagent');
 
 describe('backup', function () {
 
@@ -13,13 +14,15 @@ describe('backup', function () {
 
   let settings = null;
   let resources = null;
+  let apiUrl = null;
   let connection = null;
 
   before(function (done) {
+    const domain = testuser.extractDomain(credentials.serviceInfoUrl);
     settings = {
       username: credentials.username,
-      domain: credentials.domain,
-      apiUrl: credentials.username + '.' + credentials.domain,
+      domain: domain,
+      serviceInfoUrl: credentials.serviceInfoUrl,
       password: credentials.password,
       includeTrashed: true,
       includeAttachments: true,
@@ -33,8 +36,9 @@ describe('backup', function () {
     const streamsRequest = 'streams?state=all';
     resources = ['account', streamsRequest, 'accesses', 'followed-slices', 'profile/public', eventsRequest];
 
-    pryv.Connection.login(settings, function (err, conn) {
+    backup.signInToPryv(settings, (err, conn) => {
       connection = conn;
+      apiUrl = connection.apiUrl;
       settings.backupDirectory.deleteDirs(done);
     });
   });
@@ -71,14 +75,9 @@ describe('backup', function () {
         function checkContent(stepDone) {
           async.each(resources,
               function (resource, callback) {
-                connection.request({
-                  method: 'GET',
-                  path: '/' + resource,
-                  callback: function (error, result) {
-                    if(error) {
-                      return callback(error);
-                    }
-
+                superagent.get(apiUrl + resource)
+                  .set('Authorization', connection.auth)
+                  .then(result => {
                     let outputFilename = resource.replace('/', '_').split('?')[0];
                     const json = JSON.parse(fs.readFileSync(settings.backupDirectory.baseDir + outputFilename + '.json', 'utf8'));
 
@@ -88,10 +87,10 @@ describe('backup', function () {
                       outputFilename = 'profile';
                     }
                     
-                    const expected = json[outputFilename];
-                    const actual = result[outputFilename];
                     
                     if(outputFilename === 'accesses') {
+                      const expected = json[outputFilename];
+                      const actual = result.body[outputFilename];
                       expected.forEach(function (access, i) {
                         // The lastUsed property of the access used by this test
                         // will be updated at login, so we just check that the
@@ -105,10 +104,11 @@ describe('backup', function () {
                       });
                     }
                     // find a way to test content
-                    //JSON.stringify(result[outputFilename]).should.equal(JSON.stringify(json[outputFilename]));
                     callback();
-                  }
-                });
+                  })
+                  .catch(error => {
+                    return callback(error);
+                  });
               }, stepDone);
         }
     ], function(err) {

@@ -12,22 +12,18 @@ const { URL } = require('url');
 const BackupDirectory = require('../src/methods/backup-directory');
 const parseDomain = require("parse-domain");
 
-let domain;
 try {
-    new URL(params.domain); // Check if params.domain is a valid url
+    new URL(params.serviceInfoUrl); // Check if params.domain is a valid url
     
-    const parsedDomain = parseDomain(params.domain); // it is --> we can extract the domain from it
-    domain = parsedDomain.domain + '.' + parsedDomain.tld;
+    const parsedDomain = parseDomain(params.serviceInfoUrl); // it is --> we can extract the domain from it
+    params.domain = parsedDomain.domain + '.' + parsedDomain.tld;
 }
 catch(error) {
-    if(error.code !== 'ERR_INVALID_URL') {
-        console.error(error);
-        return;
-    }
-    domain = params.domain; // it is not, use it as a domain
+    console.error(error);
+    return;
 }
 
-params.backupDirectory = new BackupDirectory(params.username, domain);
+params.backupDirectory = new BackupDirectory(params.username, params.domain);
 backup.start(params, () => {
     console.log('Backup completed');
 });

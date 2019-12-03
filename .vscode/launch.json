@@ -20,7 +20,7 @@
             "skipFiles": [
                 "<node_internals>/**"
             ],
-            "program": "${workspaceFolder}/src/kickstart.js"
+            "program": "${workspaceFolder}/scripts/kickstart.js"
         }
     ]
 }

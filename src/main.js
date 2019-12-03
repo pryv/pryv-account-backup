@@ -1,56 +1,81 @@
-const pryv = require('pryv');
 const fs = require('fs');
 const async = require('async');
 const _ = require('lodash');
 const apiResources = require('./methods/api-resources');
 const attachments = require('./methods/attachments');
-const { URL } = require('url');
 const superagent = require('superagent');
 const parseDomain = require("parse-domain");
 
+const appId = 'pryv-backup';
 let apiUrl;
 async function signInToPryv (params, callback) {
-  params = _.extend({
-    appId: 'pryv-backup',
-    username: null,
-    auth: null,
-    port: 443,
-    ssl: true,
-    domain: false,
-    includeTrashed: false,
-    includeAttachments: false
-  }, params);
+  try {
+    const serviceInfo = await fetchServiceInfo(params.serviceInfoUrl, params.username);
+    apiUrl = serviceInfo.apiUrl;
+    const regUrl = serviceInfo.regUrl;
+    const parsedDomain = parseDomain(apiUrl);
+    const domain = parsedDomain.domain + '.' + parsedDomain.tld;
 
-  try { // service info
-    const serviceInfoUrl = params.domain;
-    new URL(serviceInfoUrl); // Check if serviceInfoUrl is a valid url
-
-    const parsedDomain = parseDomain(serviceInfoUrl);
-    params.domain = parsedDomain.domain + '.' + parsedDomain.tld;
-    apiUrl = await fetchApiUrl(serviceInfoUrl, params.username);
-  }
-  catch(error) { // domain
-    if(error.code !== 'ERR_INVALID_URL') {
-      console.error(error); // Unknown error
-      return;
+    if(!apiUrl || !regUrl || !domain) {
+      return callback(new Error('Unable to fetch apiUrl : ' + apiUrl + ' or regUrl : ' + regUrl + ' or domain : ' + domain));
     }
-    apiUrl = params.username + '.' + params.domain;
+
+    origin = 'https://sw.' + domain;
+    console.log('Connecting to ' + apiUrl);  
+    const connection = await login(params.username, params.password, apiUrl, regUrl, domain);
+    callback(null, connection);
   }
-  params.origin = 'https://sw.' + params.domain;
-
-  console.log('Connecting to ' + apiUrl);
-
-  pryv.Connection.login(params, callback);
+  catch(error) {
+    console.error('Unable to reach service info at ' + params.serviceInfoUrl + ' : ' + JSON.stringify(error, null, 2));
+    callback(error);
+  }
 }
 
-async function fetchApiUrl(serviceInfoUrl, username) {
-  try {
-    const serviceInfoRes = await superagent.get(serviceInfoUrl);
-    return serviceInfoRes.body.api.replace('{username}', username)
-  } catch (error) {
-    console.error('Unable to reach service info at ' + serviceInfoUrl + ' : ' + JSON.stringify(error, null, 2));
+async function login(username, password, apiUrl, regUrl, domain) {
+  const regAccessBody = {
+    'requestingAppId': appId,
+    'requestedPermissions': [{
+      'streamId': '*',
+      'level': 'manage',
+      'defaultName': 'backup'
+    }],
+    'languageCode': 'fr'
+  };
+  const authLoginBody = {
+    "appId": appId,
+    "username": username,
+    "password": password
   }
-  return '';
+
+  regUrl = regUrl + '/access';
+  let result = await superagent.post(regUrl)
+    .set('Content-Type', 'application/json')
+    .send(regAccessBody);
+  if(result.body.code != 201 || result.body.status.indexOf('NEED_SIGNIN') != 0) {
+    throw(new Error('Error while trying to reach ' + regUrl + ' : ' + JSON.stringify(result, null, 2)));
+  }
+
+  const authLoginUrl = apiUrl + 'auth/login';
+  result = await superagent.post(authLoginUrl)
+    .set('Content-Type', 'application/json')
+    .set('Origin', origin)
+    .send(authLoginBody);
+  const token = result.body.token;
+  if(!token) {
+    throw(new Error('Error while trying to reach ' + authLoginUrl + ' : ' + JSON.stringify(result, null, 2)));
+  }
+
+  return {'auth': token, 'username': username, 'apiUrl': apiUrl, 'settings': {'port': 443, 'domain': domain}};
+}
+
+async function fetchServiceInfo(serviceInfoUrl, username) {
+  const serviceInfoRes = await superagent.get(serviceInfoUrl);
+  const apiUrl = serviceInfoRes.body.api.replace('{username}', username);
+  const regUrl = serviceInfoRes.body.register;
+  return {
+    apiUrl: apiUrl,
+    regUrl: regUrl
+  };
 }
 
 /**
@@ -118,11 +143,7 @@ function startOnConnection (connection, params, callback, log) {
         if (access.type !== 'app') {
           return callback();
         }
-        const tempConnection = new pryv.Connection({
-          username: connection.username,
-          domain: connection.domain || connection.settings.domain,
-          auth: access.token
-        });
+        const tempConnection = {'auth': access.token, 'settings': connection.settings};
         apiResources.toJSONFile({
           folder: backupDirectory.appProfilesDir,
           resource: 'profile/app',

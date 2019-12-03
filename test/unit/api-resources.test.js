@@ -1,8 +1,8 @@
 /*global describe, it, before, after */
 
 const api = require('../../src/methods/api-resources');
-const pryv = require('pryv');
-const credentials = require('../helpers/testuser').credentials;
+const testuser = require('../helpers/testuser');
+const credentials = testuser.credentials
 const Directory = require('../../src/methods/backup-directory');
 const fs = require('fs');
 const async = require('async');
@@ -15,16 +15,16 @@ describe('api-resources', function () {
     const params = {
             folder: null,
             resource: null,
-            connection: null,
-            apiUrl: null
+            connection: null
         };
 
     before(function (done) {
-        connection = new pryv.Connection(credentials);
-        BackupDirectory = new Directory(credentials.username,credentials.domain);
+        const domain = testuser.extractDomain(credentials.serviceInfoUrl);
+        connection = {'auth': credentials.auth, 'username': credentials.username, 'settings': {'port': 443, 'domain': domain}};
+        BackupDirectory = new Directory(credentials.username,domain);
         params.folder = BackupDirectory.baseDir;
         params.connection = connection;
-        params.apiUrl = credentials.username + '.' + credentials.domain;
+        params.apiUrl = credentials.username + '.' + domain;
 
         async.series([
             BackupDirectory.deleteDirs,

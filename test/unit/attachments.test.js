@@ -1,11 +1,11 @@
 /*global describe, it, before, after */
 
 const attachments = require('../../src/methods/attachments');
-const credentials = require('../helpers/testuser').credentials;
+const testuser = require('../helpers/testuser');
+const credentials = testuser.credentials
 const api = require('../../src/methods/api-resources');
 const Directory = require('../../src/methods/backup-directory');
 const fs = require('fs');
-const pryv = require('pryv');
 const should = require('should');
 const async = require('async');
 
@@ -15,8 +15,9 @@ describe('attachments', function () {
     let BackupDirectory = null;
 
     before(function (done) {
-        connection = new pryv.Connection(credentials);
-        BackupDirectory = new Directory(credentials.username,credentials.domain);
+        const domain = testuser.extractDomain(credentials.serviceInfoUrl);
+        connection = {'auth': credentials.auth, 'username': credentials.username, 'settings': {'port': 443, 'domain': domain}};
+        BackupDirectory = new Directory(credentials.username,domain);
         async.series([
                 BackupDirectory.deleteDirs,
                 function create(stepDone) {
@@ -27,7 +28,7 @@ describe('attachments', function () {
                         folder: BackupDirectory.baseDir,
                         resource: 'events',
                         connection: connection,
-                        apiUrl: credentials.username + '.' + credentials.domain
+                        apiUrl: credentials.username + '.' + domain
                     };
                     api.toJSONFile(params, stepDone);
                 }
