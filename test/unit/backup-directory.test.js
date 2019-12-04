@@ -1,16 +1,18 @@
 /*global describe, it, before, after */
 
-var Directory = require('../../src/methods/backup-directory'),
-    credentials = require('../helpers/testuser').credentials,
-    fs = require('fs'),
-    should = require('should');
+const Directory = require('../../src/methods/backup-directory');
+const testuser = require('../helpers/testuser');
+const credentials = testuser.credentials
+const fs = require('fs');
+const should = require('should');
 
 describe('backup-directory', function () {
 
-    var BackupDirectory = null;
+    let BackupDirectory = null;
 
     before(function (done) {
-        BackupDirectory = new Directory(credentials.username,credentials.domain);
+        const domain = testuser.extractDomain(credentials.serviceInfoUrl);
+        BackupDirectory = new Directory(credentials.username,domain);
         BackupDirectory.deleteDirs(done);
     });
 
@@ -34,5 +36,4 @@ describe('backup-directory', function () {
             });
         });
     });
-
 });

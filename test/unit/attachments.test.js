@@ -1,32 +1,34 @@
 /*global describe, it, before, after */
 
-var attachments = require('../../src/methods/attachments'),
-    credentials = require('../helpers/testuser').credentials,
-    api = require('../../src/methods/api-resources'),
-    Directory = require('../../src/methods/backup-directory'),
-    fs = require('fs'),
-    pryv = require('pryv'),
-    should = require('should'),
-    async = require('async');
+const attachments = require('../../src/methods/attachments');
+const testuser = require('../helpers/testuser');
+const credentials = testuser.credentials
+const api = require('../../src/methods/api-resources');
+const Directory = require('../../src/methods/backup-directory');
+const fs = require('fs');
+const should = require('should');
+const async = require('async');
 
 describe('attachments', function () {
 
-    var connection = null,
-        BackupDirectory = null;
+    let connection = null;
+    let BackupDirectory = null;
 
     before(function (done) {
-        connection = new pryv.Connection(credentials);
-        BackupDirectory = new Directory(credentials.username,credentials.domain);
+        const domain = testuser.extractDomain(credentials.serviceInfoUrl);
+        connection = {'auth': credentials.auth, 'username': credentials.username, 'settings': {'port': 443, 'domain': domain}};
+        BackupDirectory = new Directory(credentials.username,domain);
         async.series([
                 BackupDirectory.deleteDirs,
                 function create(stepDone) {
                     BackupDirectory.createDirs(stepDone);
                 },
                 function createEventsFile(stepDone) {
-                    var params = {
+                    const params = {
                         folder: BackupDirectory.baseDir,
                         resource: 'events',
-                        connection: connection
+                        connection: connection,
+                        apiUrl: credentials.username + '.' + domain
                     };
                     api.toJSONFile(params, stepDone);
                 }
@@ -42,11 +44,11 @@ describe('attachments', function () {
 
             should.not.exists(err);
 
-            var events = JSON.parse(fs.readFileSync(BackupDirectory.eventsFile, 'utf8'));
+            const events = JSON.parse(fs.readFileSync(BackupDirectory.eventsFile, 'utf8'));
             events.events.forEach(function (event) {
                 if (event.attachments) {
                     event.attachments.forEach(function (att) {
-                        var attFile = BackupDirectory.attachmentsDir + '/' + event.id + '_' + att.fileName;
+                        const attFile = BackupDirectory.attachmentsDir + '/' + event.id + '_' + att.fileName;
                         fs.existsSync(attFile).should.equal(true);
                     });
                 }

@@ -1,0 +1,9 @@
+{
+    "params": {
+        "serviceInfoUrl": "https://reg.pryv.li/service/info",
+        "username": "testuserli",
+        "password": "testuserli",
+        "includeTrashed": false,
+        "includeAttachments": true
+    }
+}

@@ -21,9 +21,7 @@ In your terminal, run the following commands:
 
 `npm start` to launch the backup script. 
 
-This will ask you for the **domain**, **username** and **password** of the Pryv account you wish to back up.
-
-The **domain** is `pryv.me` if you are using the demo platform, then just provide the same **username** and **password** you use to connect to the dashboard.
+This will ask you for the **service-info url**, **username** and **password** of the Pryv account you wish to back up.
 
 You can finally choose to backup also trashed data as well as attachment files.
 
@@ -55,9 +53,9 @@ Add the following to your `package.json`: `"pryv-backup":"git+ssh://git@github.c
 then use it as following:
 
 ```javascript
-var backup = require('pryv-backup');
+const backup = require('pryv-backup');
 
-var settings = {
+const settings = {
       username: USERNAME,  
       domain: DOMAIN, // optional  
       password: PASSWORD,  
