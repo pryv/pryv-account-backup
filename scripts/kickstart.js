@@ -13,7 +13,7 @@ const BackupDirectory = require('../src/methods/backup-directory');
 const parseDomain = require("parse-domain");
 
 try {
-    new URL(params.serviceInfoUrl); // Check if params.domain is a valid url
+    new URL(params.serviceInfoUrl); // Check if params.serviceInfoUrl is a valid url
     
     const parsedDomain = parseDomain(params.serviceInfoUrl); // it is --> we can extract the domain from it
     params.domain = parsedDomain.domain + '.' + parsedDomain.tld;

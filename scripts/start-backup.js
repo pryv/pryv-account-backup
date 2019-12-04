@@ -3,12 +3,14 @@ const async = require('async');
 const read = require('read');
 const backup = require('../src/main');
 const BackupDirectory = require('../src/methods/backup-directory');
+const superagent = require('superagent');
+const parseDomain = require('parse-domain');
 const authSettings = {};
 
 async.series([
   function inputDomain(done) {
-    read({prompt: 'Service info URL or domain (default (domain): pryv.me): ', silent: false}, function (err, domain) {
-      authSettings.domain = domain || 'pryv.me';
+    read({prompt: 'Service info URL: ', silent: false}, function (err, serviceInfoUrl) {
+      authSettings.serviceInfoUrl = serviceInfoUrl;
       done(err);
     });
   },
@@ -36,6 +38,16 @@ async.series([
       function (err, res) {
         authSettings.includeAttachments = (res.toLowerCase() === 'y');
         done(err);
+      });
+  },
+  function extractDomain(done) {
+    superagent.get(authSettings.serviceInfoUrl)
+      .then(serviceInfoRes => {
+        const apiUrl = serviceInfoRes.body.api.replace('{username}', authSettings.username);
+        const parsedDomain = parseDomain(apiUrl);
+        const domain = parsedDomain.domain + '.' + parsedDomain.tld;
+        authSettings.domain = domain
+        done();
       });
   },
   function askOverwriteEvents(done) {

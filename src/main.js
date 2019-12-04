@@ -5,24 +5,25 @@ const apiResources = require('./methods/api-resources');
 const attachments = require('./methods/attachments');
 const superagent = require('superagent');
 const parseDomain = require('parse-domain');
+const url = require('url');
 
 const appId = 'pryv-backup';
-let apiUrl;
 async function signInToPryv (params, callback) {
   try {
     const serviceInfo = await fetchServiceInfo(params.serviceInfoUrl, params.username);
-    apiUrl = serviceInfo.apiUrl;
+    const apiUrl = serviceInfo.apiUrl;
     const regUrl = serviceInfo.regUrl;
     const parsedDomain = parseDomain(apiUrl);
     const domain = parsedDomain.domain + '.' + parsedDomain.tld;
 
-    if(!apiUrl || !regUrl || !domain) {
+    if(apiUrl == null || regUrl == null || domain == null) {
       return callback(new Error('Unable to fetch apiUrl : ' + apiUrl + ' or regUrl : ' + regUrl + ' or domain : ' + domain));
     }
+    params.apiUrl = apiUrl;
 
-    origin = 'https://sw.' + domain;
+    const origin = 'https://sw.' + domain;
     console.log('Connecting to ' + apiUrl);  
-    const connection = await login(params.username, params.password, apiUrl, regUrl, domain);
+    const connection = await login(params.username, params.password, apiUrl, regUrl, domain, origin);
     callback(null, connection);
   }
   catch(error) {
@@ -31,7 +32,7 @@ async function signInToPryv (params, callback) {
   }
 }
 
-async function login(username, password, apiUrl, regUrl, domain) {
+async function login(username, password, apiUrl, regUrl, domain, origin) {
   const regAccessBody = {
     'requestingAppId': appId,
     'requestedPermissions': [{
@@ -47,22 +48,22 @@ async function login(username, password, apiUrl, regUrl, domain) {
     "password": password
   }
 
-  regUrl = regUrl + '/access';
-  let result = await superagent.post(regUrl)
+  regUrl = url.resolve(regUrl, 'access');
+  const resultReg = await superagent.post(regUrl)
     .set('Content-Type', 'application/json')
     .send(regAccessBody);
-  if(result.body.code != 201 || result.body.status.indexOf('NEED_SIGNIN') != 0) {
-    throw(new Error('Error while trying to reach ' + regUrl + ' : ' + JSON.stringify(result, null, 2)));
+  if(resultReg.body.code != 201 || resultReg.body.status.indexOf('NEED_SIGNIN') != 0) {
+    throw(new Error('Error while trying to reach ' + regUrl + ' : ' + JSON.stringify(resultReg, null, 2)));
   }
 
-  const authLoginUrl = apiUrl + 'auth/login';
-  result = await superagent.post(authLoginUrl)
+  const authLoginUrl = url.resolve(apiUrl, 'auth/login');
+  const resultAuth = await superagent.post(authLoginUrl)
     .set('Content-Type', 'application/json')
     .set('Origin', origin)
     .send(authLoginBody);
-  const token = result.body.token;
-  if(!token) {
-    throw(new Error('Error while trying to reach ' + authLoginUrl + ' : ' + JSON.stringify(result, null, 2)));
+  const token = resultAuth.body.token;
+  if(token == null) {
+    throw(new Error('Error while trying to reach ' + authLoginUrl + ' : ' + JSON.stringify(resultAuth, null, 2)));
   }
 
   return {'auth': token, 'username': username, 'apiUrl': apiUrl, 'settings': {'port': 443, 'domain': domain}};
@@ -102,6 +103,7 @@ exports.start = function (params, callback) {
 
 function startOnConnection (connection, params, callback, log) {
   const backupDirectory = params.backupDirectory;
+  const apiUrl = params.apiUrl;
 
   if (!log) {
     log = console.log;
