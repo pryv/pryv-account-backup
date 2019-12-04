@@ -4,7 +4,7 @@ const _ = require('lodash');
 const apiResources = require('./methods/api-resources');
 const attachments = require('./methods/attachments');
 const superagent = require('superagent');
-const parseDomain = require("parse-domain");
+const parseDomain = require('parse-domain');
 
 const appId = 'pryv-backup';
 let apiUrl;
