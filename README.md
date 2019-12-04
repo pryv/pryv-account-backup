@@ -21,9 +21,7 @@ In your terminal, run the following commands:
 
 `npm start` to launch the backup script. 
 
-This will ask you for the **service-info path**, **username** and **password** of the Pryv account you wish to back up.
-
-The **domain** is the `service-info apiUrl` if you are using the demo platform, then just provide the same **username** and **password** you use to connect to the dashboard.
+This will ask you for the **service-info url**, **username** and **password** of the Pryv account you wish to back up.
 
 You can finally choose to backup also trashed data as well as attachment files.
 
