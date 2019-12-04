@@ -36,7 +36,7 @@ async function login(username, password, apiUrl, regUrl, domain) {
     'requestingAppId': appId,
     'requestedPermissions': [{
       'streamId': '*',
-      'level': 'manage',
+      'level': 'read',
       'defaultName': 'backup'
     }],
     'languageCode': 'fr'
