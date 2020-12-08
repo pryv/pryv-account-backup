@@ -10,9 +10,9 @@ describe('backup-directory', function () {
 
     let BackupDirectory = null;
 
-    before(function (done) {
-        const domain = testuser.extractDomain(credentials.serviceInfoUrl);
-        BackupDirectory = new Directory(credentials.username,domain);
+    before(async function (done) {
+        const service = new Pryv.Service(credentials.serviceInfoUrl);
+        BackupDirectory = new Directory(credentials.username);
         BackupDirectory.deleteDirs(done);
     });
 

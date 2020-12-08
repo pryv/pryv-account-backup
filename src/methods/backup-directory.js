@@ -5,12 +5,13 @@ const async = require('async');
 /**
  * Object containing backup directories and files object as well as the function to generate them
  *
- * @param username
- * @param domain
+ * @param apiEndpoint
  */
-const BackupDirectory = module.exports = function (username, domain, dir) {
+const BackupDirectory = module.exports = function (apiEndpoint, dir) {
   const rootDir = dir || '/tmp/backupPY/';
-  this.baseDir = rootDir + username + '.' + domain + '/';
+  const url = new URL(apiEndpoint);
+  const base = url.hostname + url.pathname.split('/').join('_');
+  this.baseDir = rootDir + base + '/';
   this.attachmentsDir = this.baseDir + 'attachments/';
   this.appProfilesDir = this.baseDir + 'app_profiles/';
   this.eventsFile = this.baseDir + 'events.json';
@@ -21,7 +22,7 @@ const BackupDirectory = module.exports = function (username, domain, dir) {
  * Creates the directories where the backup files will be stored:
  *
  * out/
- *  username.domain/
+ *  apiEndpoint/
  *    attachments/
  *    events.json
  *    *.json
@@ -34,7 +35,7 @@ BackupDirectory.prototype.createDirs = function (callback, log) {
   }
   async.series([
     function createBaseDir(stepDone) {
-      mkdirp(this.baseDir, function (err) {
+      mkdirp(this.baseDir).then(function (res, err){
         if (err) {
           console.error('Error while creating base dir: ' + this.baseDir, err);
           return stepDone(err);
@@ -44,7 +45,7 @@ BackupDirectory.prototype.createDirs = function (callback, log) {
       }.bind(this));
     }.bind(this),
     function createAppProfileDir(stepDone) {
-      mkdirp(this.appProfilesDir, function (err) {
+      mkdirp(this.appProfilesDir).then(function (res, err){
         if (err) {
           console.error('Error while creating accesses dir: ' + this.appProfilesDir, err);
           return stepDone(err);
@@ -54,7 +55,7 @@ BackupDirectory.prototype.createDirs = function (callback, log) {
       }.bind(this));
     }.bind(this),
     function createAttachmentsDir(stepDone) {
-      mkdirp(this.attachmentsDir, function (err) {
+      mkdirp(this.attachmentsDir).then(function (res, err){
         if (err) {
           console.error('Error while creating attachments dir: ' + this.attachmentsDir, err);
           return stepDone(err);

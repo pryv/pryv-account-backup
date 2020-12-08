@@ -19,12 +19,11 @@ describe('api-resources', function () {
         };
 
     before(function (done) {
-        const domain = testuser.extractDomain(credentials.serviceInfoUrl);
-        connection = {'auth': credentials.auth, 'username': credentials.username, 'settings': {'port': 443, 'domain': domain}};
+        connection = {'auth': credentials.auth, 'username': credentials.username};
         BackupDirectory = new Directory(credentials.username,domain);
         params.folder = BackupDirectory.baseDir;
         params.connection = connection;
-        params.apiUrl = credentials.username + '.' + domain;
+        params.apiEndpoint = credentials.username + '.' + domain;
 
         async.series([
             BackupDirectory.deleteDirs,

@@ -14,14 +14,13 @@ describe('backup', function () {
 
   let settings = null;
   let resources = null;
-  let apiUrl = null;
+  let apiEndpoint = null;
   let connection = null;
 
   before(function (done) {
-    const domain = testuser.extractDomain(credentials.serviceInfoUrl);
     settings = {
+      origin: credentials.origin,
       username: credentials.username,
-      domain: domain,
       serviceInfoUrl: credentials.serviceInfoUrl,
       password: credentials.password,
       includeTrashed: true,
@@ -29,22 +28,18 @@ describe('backup', function () {
       appId: 'pryv-backup'
     };
 
-    settings.origin = 'https://sw.' + settings.domain;
-    settings.backupDirectory = new backup.Directory(settings.username, settings.domain);
-
     const eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000 + '&state=all';
     const streamsRequest = 'streams?state=all';
     resources = ['account', streamsRequest, 'accesses', 'followed-slices', 'profile/public', eventsRequest];
 
     backup.signInToPryv(settings, (err, conn) => {
-      connection = conn;
-      apiUrl = connection.apiUrl;
+      settings.backupDirectory = new backup.Directory(conn.apiEndpoint);
       settings.backupDirectory.deleteDirs(done);
     });
   });
 
   after(function (done) {
-    settings.backupDirectory.deleteDirs(done);
+    if (settings.backupDirectory) settings.backupDirectory.deleteDirs(done);
   });
 
   it('should backup the correct folders and files', function (done) {
@@ -75,7 +70,7 @@ describe('backup', function () {
         function checkContent(stepDone) {
           async.each(resources,
               function (resource, callback) {
-                superagent.get(apiUrl + resource)
+                superagent.get(apiEndpoint + resource)
                   .set('Authorization', connection.auth)
                   .then(result => {
                     let outputFilename = resource.replace('/', '_').split('?')[0];

@@ -33,7 +33,6 @@ if (fs.existsSync(configFile)) {
 nconf.file({ file: configFile});
 nconf.defaults({
     pryv: {
-        'domain': 'pryv.me',
         'serviceInfoUrl': 'https://reg.pryv.me/service/info'
     }
 });

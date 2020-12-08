@@ -16,7 +16,7 @@ describe('attachments', function () {
 
     before(function (done) {
         const domain = testuser.extractDomain(credentials.serviceInfoUrl);
-        connection = {'auth': credentials.auth, 'username': credentials.username, 'settings': {'port': 443, 'domain': domain}};
+        connection = {'auth': credentials.auth, 'username': credentials.username, 'serviceInfoUrl': credentials.serviceInfoUrl};
         BackupDirectory = new Directory(credentials.username,domain);
         async.series([
                 BackupDirectory.deleteDirs,
@@ -28,7 +28,7 @@ describe('attachments', function () {
                         folder: BackupDirectory.baseDir,
                         resource: 'events',
                         connection: connection,
-                        apiUrl: credentials.username + '.' + domain
+                        apiEndpoint: credentials.username + '.' + domain
                     };
                     api.toJSONFile(params, stepDone);
                 }
