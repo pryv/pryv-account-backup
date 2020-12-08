@@ -7,6 +7,7 @@ const async = require('async');
 const fs = require('fs');
 const should = require('should');
 const superagent = require('superagent');
+const Pryv = require('pryv');
 
 describe('backup', function () {
 
@@ -14,12 +15,10 @@ describe('backup', function () {
 
   let settings = null;
   let resources = null;
-  let apiEndpoint = null;
   let connection = null;
 
   before(function (done) {
     settings = {
-      origin: credentials.origin,
       username: credentials.username,
       serviceInfoUrl: credentials.serviceInfoUrl,
       password: credentials.password,
@@ -32,10 +31,13 @@ describe('backup', function () {
     const streamsRequest = 'streams?state=all';
     resources = ['account', streamsRequest, 'accesses', 'followed-slices', 'profile/public', eventsRequest];
 
-    backup.signInToPryv(settings, (err, conn) => {
-      settings.backupDirectory = new backup.Directory(conn.apiEndpoint);
+    backup.signInToPryv(settings).then((conn, err) => { 
+      if (err) return done(err);
+      connection = conn;
+      settings.backupDirectory = new backup.Directory(connection.endpoint);
       settings.backupDirectory.deleteDirs(done);
     });
+  
   });
 
   after(function (done) {
@@ -70,8 +72,8 @@ describe('backup', function () {
         function checkContent(stepDone) {
           async.each(resources,
               function (resource, callback) {
-                superagent.get(apiEndpoint + resource)
-                  .set('Authorization', connection.auth)
+                superagent.get(connection.endpoint + resource)
+                  .set('Authorization', connection.token)
                   .then(result => {
                     let outputFilename = resource.replace('/', '_').split('?')[0];
                     const json = JSON.parse(fs.readFileSync(settings.backupDirectory.baseDir + outputFilename + '.json', 'utf8'));

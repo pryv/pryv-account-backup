@@ -8,6 +8,7 @@ const Directory = require('../../src/methods/backup-directory');
 const fs = require('fs');
 const should = require('should');
 const async = require('async');
+const Pryv = require('pryv');
 
 describe('attachments', function () {
 
@@ -15,20 +16,27 @@ describe('attachments', function () {
     let BackupDirectory = null;
 
     before(function (done) {
-        const domain = testuser.extractDomain(credentials.serviceInfoUrl);
-        connection = {'auth': credentials.auth, 'username': credentials.username, 'serviceInfoUrl': credentials.serviceInfoUrl};
-        BackupDirectory = new Directory(credentials.username,domain);
+        const service = new Pryv.Service(credentials.serviceInfoUrl);
         async.series([
-                BackupDirectory.deleteDirs,
+                function login(stepDone) {
+                  service.login(credentials.username, credentials.password, 'bkp-test').then((conn, err) => { 
+                    if (err) return stepDone(err);
+                    connection = conn;
+                    BackupDirectory = new Directory(conn.endpoint);
+                    stepDone();
+                  });
+                },
+                function deleteDirectories(stepDone) {
+                  BackupDirectory.deleteDirs(stepDone);
+                },
                 function create(stepDone) {
-                    BackupDirectory.createDirs(stepDone);
+                  BackupDirectory.createDirs(stepDone);
                 },
                 function createEventsFile(stepDone) {
                     const params = {
                         folder: BackupDirectory.baseDir,
                         resource: 'events',
-                        connection: connection,
-                        apiEndpoint: credentials.username + '.' + domain
+                        connection: connection
                     };
                     api.toJSONFile(params, stepDone);
                 }

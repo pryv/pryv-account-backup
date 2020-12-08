@@ -7,6 +7,7 @@ const Directory = require('../../src/methods/backup-directory');
 const fs = require('fs');
 const async = require('async');
 const should = require('should');
+const Pryv = require('pryv');
 
 describe('api-resources', function () {
 
@@ -19,17 +20,23 @@ describe('api-resources', function () {
         };
 
     before(function (done) {
-        connection = {'auth': credentials.auth, 'username': credentials.username};
-        BackupDirectory = new Directory(credentials.username,domain);
-        params.folder = BackupDirectory.baseDir;
-        params.connection = connection;
-        params.apiEndpoint = credentials.username + '.' + domain;
-
+        const service = new Pryv.Service(credentials.serviceInfoUrl); 
         async.series([
-            BackupDirectory.deleteDirs,
-            function create(stepDone) {
-                BackupDirectory.createDirs(stepDone);
-            }], done);
+          function login(stepDone) {
+            service.login(credentials.username, credentials.password, 'bkp-test').then((conn, err) => { 
+              if (err) return stepDone(err);
+              params.connection = conn;
+              BackupDirectory = new Directory(conn.endpoint);
+              params.folder = BackupDirectory.baseDir;
+              stepDone();
+            });
+          },
+          function deleteDirectories(stepDone) {
+            BackupDirectory.deleteDirs(stepDone);
+          },
+          function create(stepDone) {
+              BackupDirectory.createDirs(stepDone);
+          }], done);
     });
 
     after(function (done) {
@@ -42,6 +49,7 @@ describe('api-resources', function () {
 
         api.toJSONFile(params, function(err) {
             should.not.exist(err);
+            console.log(params.folder+'/'+params.resource+'.json');
             fs.existsSync(params.folder+'/'+params.resource+'.json').should.equal(true);
             done();
         });

@@ -5,14 +5,21 @@ const apiResources = require('./methods/api-resources');
 const attachments = require('./methods/attachments');
 const url = require('url');
 const pryv = require('pryv');
+const Pryv = require('pryv/src/Pryv');
 
 const appId = 'pryv-backup';
 
-async function signInToPryv (context, callback) {
-  const url = new URL(context.service.infoSync().register);
-  const origin = url.protocol + '//' + url.hostname; // let's try with the url of service info
-  console.log('Login with origin: ' + origin);
-  return await context.service.login(context.username, context.password, appId, origin);
+async function signInToPryv (context) {
+  if (! context.service) {
+    context.service = new Pryv.Service(context.serviceInfoUrl);
+  }
+  const infos = await context.service.info();
+  if (! context.origin) {
+    const url = new URL(infos.register);
+    context.origin = url.protocol + '//' + url.hostname; // let's try with the url of service info
+  } 
+  console.log('Login with origin: ' + context.origin);
+  return await context.service.login(context.username, context.password, appId, context.origin);
 }
 
 
@@ -110,3 +117,4 @@ function startOnConnection (connection, params, callback, log) {
  */
 exports.Directory = require('./methods/backup-directory');
 exports.startOnConnection = startOnConnection;
+exports.signInToPryv = signInToPryv;

@@ -18,7 +18,7 @@ exports.toJSONFile = function streamApiToFile(params, callback, log) {
     log = console.log;
   }
 
-  log('Fetching: ' + params.resource + params.extraFileName );
+  log('Fetching: ' + params.resource + params.extraFileName + ' in folder: ' + params.folder);
   let outputFilename = null;
   let writeStream = null;
 
