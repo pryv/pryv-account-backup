@@ -71,13 +71,17 @@ backup.start(settings, function (err) {
 });  
 ```
 
+## (Experimental) Restore Streams and Events to another account
+
+`node scripts/start-restore.js <path to backup dir>`
+
 ## Contribute
 
 Prerequisites: Node v8+, yarn v0.27.5
 
-Install dependencies: `yarn install`
+Install dependencies: `npm install`
 
-Run tests: `yarn run test`
+Run tests: `npm run test`
 
 ## License
 
