@@ -8,7 +8,7 @@ const async = require('async');
  * @param apiEndpoint
  */
 const BackupDirectory = module.exports = function (apiEndpoint, dir) {
-  const rootDir = dir || '/tmp/backupPY/';
+  const rootDir = dir || './backup/';
   const url = new URL(apiEndpoint);
   const base = url.hostname + url.pathname.split('/').join('_');
   this.baseDir = rootDir + base + '/';
