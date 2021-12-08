@@ -1,11 +1,11 @@
-# app-node-backup
+# Pryv.io account backup
 
 <!--
 [![Build Status](https://travis-ci.org/pryv/app-node-backup.svg?branch=master)](https://travis-ci.org/pryv/app-node-backup)
 [![Coverage Status](https://coveralls.io/repos/github/pryv/app-node-backup/badge.svg?branch=master)](https://coveralls.io/github/pryv/app-node-backup?branch=master)
 -->
 
-Simple script to backup your Pryv data
+Simple script to backup your Pryv.io data
 
 ## Script Usage
 
@@ -13,9 +13,9 @@ Simple script to backup your Pryv data
 
 In your terminal, run the following commands:
 
-`git clone https://github.com/pryv/app-node-backup.git` to download the script
+`git clone https://github.com/pryv/pryv-account-backup.git` to download the script
 
-`cd app-node-backup` to go in the script folder
+`cd pryv-account-backup` to go in the script folder
 
 `npm install` to download required dependencies
 
@@ -42,13 +42,13 @@ As well as the following in binary files:
 
 ### Running conditions
 
-The operation might take a while in case the data size is substantial. Please, leave requests [here](https://github.com/pryv/app-node-backup/issues)
+The operation might take a while in case the data size is substantial. Please, leave requests [here](https://github.com/pryv/pryv-account-backup/issues)
 
 ## As a package
 
 It is also possible use the backup function in your code.
 
-Add the following to your `package.json`: `"pryv-backup":"git+ssh://git@github.com:pryv/app-node-backup.git"`
+Add the following to your `package.json`: `"pryv-backup":"git+ssh://git@github.com:pryv/pryv-account-backup.git"`
 
 then use it as following:
 
