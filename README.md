@@ -1,8 +1,8 @@
 # Pryv.io account backup
 
 <!--
-[![Build Status](https://travis-ci.org/pryv/app-node-backup.svg?branch=master)](https://travis-ci.org/pryv/app-node-backup)
-[![Coverage Status](https://coveralls.io/repos/github/pryv/app-node-backup/badge.svg?branch=master)](https://coveralls.io/github/pryv/app-node-backup?branch=master)
+[![Build Status](https://travis-ci.org/pryv/pryv-account-backup.svg?branch=master)](https://travis-ci.org/pryv/pryv-account-backup)
+[![Coverage Status](https://coveralls.io/repos/github/pryv/pryv-account-backup/badge.svg?branch=master)](https://coveralls.io/github/pryv/pryv-account-backup?branch=master)
 -->
 
 Simple script to backup your Pryv.io data
@@ -19,7 +19,7 @@ In your terminal, run the following commands:
 
 `npm install` to download required dependencies
 
-`npm start` to launch the backup script. 
+`npm start` to launch the backup script.
 
 This will ask you for the **service-info url**, **username** and **password** of the Pryv account you wish to back up.
 
@@ -29,7 +29,7 @@ You can finally choose to backup also trashed data as well as attachment files.
 
 Your data will be downloaded in `./backup/{username}.{domain}/`
 
-This downloads the following in JSON format:  
+This downloads the following in JSON format:
 * Public profile
 * Accesses
 * Followed slices
@@ -56,20 +56,20 @@ then use it as following:
 const backup = require('pryv-backup');
 
 const settings = {
-      username: USERNAME,  
-      domain: DOMAIN, // optional  
-      password: PASSWORD,  
-      includeTrashed: true, // default: false  
+      username: USERNAME,
+      domain: DOMAIN, // optional
+      password: PASSWORD,
+      includeTrashed: true, // default: false
       includeAttachments: true // default: false
-    };  
-settings.backupDirectory = new backup.Directory(settings.username, settings.domain);  
+    };
+settings.backupDirectory = new backup.Directory(settings.username, settings.domain);
 
-backup.start(settings, function (err) {  
-      if (err) {  
-        // manage error  
-      }  
-      // ...  
-});  
+backup.start(settings, function (err) {
+      if (err) {
+        // manage error
+      }
+      // ...
+});
 ```
 
 ## Contribute
