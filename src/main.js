@@ -5,13 +5,12 @@ const apiResources = require('./methods/api-resources');
 const attachments = require('./methods/attachments');
 const url = require('url');
 const pryv = require('pryv');
-const Pryv = require('pryv/src/Pryv');
 
 const appId = 'pryv-backup';
 
 async function signInToPryv (context) {
   if (! context.service) {
-    context.service = new Pryv.Service(context.serviceInfoUrl);
+    context.service = new pryv.Service(context.serviceInfoUrl);
   }
   const infos = await context.service.info();
   if (! context.origin) {
