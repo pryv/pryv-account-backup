@@ -27,7 +27,7 @@ You can finally choose to backup also trashed data as well as attachment files.
 
 ### Format
 
-Your data will be downloaded in `./backup/{username}.{domain}/`
+Your data will be downloaded in `./backup/{apiEndpoint}/`
 
 This downloads the following in JSON format:
 * Public profile
@@ -56,13 +56,12 @@ then use it as following:
 const backup = require('pryv-backup');
 
 const settings = {
-      username: USERNAME,
-      domain: DOMAIN, // optional
-      password: PASSWORD,
-      includeTrashed: true, // default: false
+      apiEndPoint: APIENDPOINT,  
+      password: PASSWORD,  
+      includeTrashed: true, // default: false  
       includeAttachments: true // default: false
-    };
-settings.backupDirectory = new backup.Directory(settings.username, settings.domain);
+    };  
+settings.backupDirectory = new backup.Directory(apiEndPoint);  
 
 backup.start(settings, function (err) {
       if (err) {
@@ -72,13 +71,17 @@ backup.start(settings, function (err) {
 });
 ```
 
+## (Experimental) Restore Streams and Events to another account
+
+`node scripts/start-restore.js <path to backup dir>`
+
 ## Contribute
 
 Prerequisites: Node v8+, yarn v0.27.5
 
-Install dependencies: `yarn install`
+Install dependencies: `npm install`
 
-Run tests: `yarn run test`
+Run tests: `npm run test`
 
 ## License
 

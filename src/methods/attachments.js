@@ -96,10 +96,12 @@ function getAttachment(connection, attachmentsDir, attachment, callback, log) {
     return callback();
   }
 
+  const url = new URL(connection.endpoint)
+
   const options = {
-    host: connection.username + '.' + connection.settings.domain,
-    port: connection.settings.port,
-    path: '/events/' +
+    host: url.hostname,
+    port: url.port || 443,
+    path: url.pathname + 'events/' +
     attachment.eventId + '/' + attachment.id + '?readToken=' + attachment.readToken
   };
 

@@ -18,9 +18,10 @@ exports.toJSONFile = function streamApiToFile(params, callback, log) {
     log = console.log;
   }
 
-  log('Fetching: ' + params.resource + params.extraFileName );
+  log('Fetching: ' + params.resource + params.extraFileName + ' in folder: ' + params.folder);
   let outputFilename = null;
   let writeStream = null;
+
 
   function openStreamsIfNeeded() {
       if (outputFilename) return;
@@ -28,12 +29,13 @@ exports.toJSONFile = function streamApiToFile(params, callback, log) {
      writeStream = fs.createWriteStream(params.folder  + outputFilename, { encoding: 'utf8' });
   }
 
-  const apiUrl = params.apiUrl.replace('https://', '').replace(/\/$/, '');
+  const url = new URL(params.connection.endpoint);
+
   const options = {
-    host: apiUrl,
-    port: connection.settings.port,
-    path: '/' + params.resource,
-    headers: {'Authorization': connection.auth}
+    host: url.hostname,
+    port: url.port || 443,
+    path: url.pathname + params.resource,
+    headers: {'Authorization': connection.token}
   };
 
   // --- pretty timed log ---//

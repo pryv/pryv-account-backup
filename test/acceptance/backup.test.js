@@ -7,6 +7,7 @@ const async = require('async');
 const fs = require('fs');
 const should = require('should');
 const superagent = require('superagent');
+const Pryv = require('pryv');
 
 describe('backup', function () {
 
@@ -14,14 +15,11 @@ describe('backup', function () {
 
   let settings = null;
   let resources = null;
-  let apiUrl = null;
   let connection = null;
 
   before(function (done) {
-    const domain = testuser.extractDomain(credentials.serviceInfoUrl);
     settings = {
       username: credentials.username,
-      domain: domain,
       serviceInfoUrl: credentials.serviceInfoUrl,
       password: credentials.password,
       includeTrashed: true,
@@ -29,22 +27,21 @@ describe('backup', function () {
       appId: 'pryv-backup'
     };
 
-    settings.origin = 'https://sw.' + settings.domain;
-    settings.backupDirectory = new backup.Directory(settings.username, settings.domain);
-
     const eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000 + '&state=all';
     const streamsRequest = 'streams?state=all';
     resources = ['account', streamsRequest, 'accesses', 'followed-slices', 'profile/public', eventsRequest];
 
-    backup.signInToPryv(settings, (err, conn) => {
+    backup.signInToPryv(settings).then((conn, err) => { 
+      if (err) return done(err);
       connection = conn;
-      apiUrl = connection.apiUrl;
+      settings.backupDirectory = new backup.Directory(connection.endpoint);
       settings.backupDirectory.deleteDirs(done);
     });
+  
   });
 
   after(function (done) {
-    settings.backupDirectory.deleteDirs(done);
+    if (settings.backupDirectory) settings.backupDirectory.deleteDirs(done);
   });
 
   it('should backup the correct folders and files', function (done) {
@@ -75,8 +72,8 @@ describe('backup', function () {
         function checkContent(stepDone) {
           async.each(resources,
               function (resource, callback) {
-                superagent.get(apiUrl + resource)
-                  .set('Authorization', connection.auth)
+                superagent.get(connection.endpoint + resource)
+                  .set('Authorization', connection.token)
                   .then(result => {
                     let outputFilename = resource.replace('/', '_').split('?')[0];
                     const json = JSON.parse(fs.readFileSync(settings.backupDirectory.baseDir + outputFilename + '.json', 'utf8'));

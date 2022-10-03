@@ -5,15 +5,19 @@ const testuser = require('../helpers/testuser');
 const credentials = testuser.credentials
 const fs = require('fs');
 const should = require('should');
+const Pryv = require('pryv');
 
 describe('backup-directory', function () {
 
     let BackupDirectory = null;
 
     before(function (done) {
-        const domain = testuser.extractDomain(credentials.serviceInfoUrl);
-        BackupDirectory = new Directory(credentials.username,domain);
-        BackupDirectory.deleteDirs(done);
+        const service = new Pryv.Service(credentials.serviceInfoUrl);
+        service.login(credentials.username, credentials.password, 'bkp-test').then((connection, err) => {
+          if (err) return done(err);
+          BackupDirectory = new Directory(connection.apiEndpoint);
+          BackupDirectory.deleteDirs(done);
+        });
     });
 
     after(function (done) {
