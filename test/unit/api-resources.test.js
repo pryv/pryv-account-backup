@@ -43,14 +43,14 @@ describe('api-resources', function () {
         BackupDirectory.deleteDirs(done);
     });
 
-    it('should retrieve the requested Pryv resource and save it to JSON', function (done) {
+    it('should retrieve the requested streams Pryv resource and save it to JSON', function (done) {
 
         params.resource = 'streams';
 
         api.toJSONFile(params, function(err) {
             should.not.exist(err);
-            console.log(params.folder+'/'+params.resource+'.json');
-            fs.existsSync(params.folder+'/'+params.resource+'.json').should.equal(true);
+            console.log(params.folder+params.resource+'.json');
+            fs.existsSync(params.folder+params.resource+'.json').should.equal(true);
             done();
         });
     });
@@ -61,7 +61,7 @@ describe('api-resources', function () {
 
         api.toJSONFile(params, function(err) {
             should.not.exist(err);
-            fs.existsSync(params.folder+'/'+'events.json').should.equal(true);
+            fs.existsSync(params.folder+'events.json').should.equal(true);
             done();
         });
     });
@@ -72,7 +72,7 @@ describe('api-resources', function () {
 
         api.toJSONFile(params, function(err, res) {
             should.exist(err);
-            fs.existsSync(params.folder+'/'+params.resource+'.json').should.equal(false);
+            fs.existsSync(params.folder+params.resource+'.json').should.equal(false);
             done();
         });
     });

@@ -1,5 +1,5 @@
 {
-  "name": "app-node-backup",
+  "name": "@pryv/account-backup",
   "description": "Backup your Pryv account",
   "version": "0.2.0",
   "private": false,
@@ -12,10 +12,10 @@
   "main": "src/main.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pryv/app-node-backup"
+    "url": "https://github.com/pryv/pryv-account-backup"
   },
   "bugs": {
-    "url": "https://github.com/pryv/app-node-backup/issues"
+    "url": "https://github.com/pryv/pryv-account-backup/issues"
   },
   "author": {
     "name": "Pryv"
