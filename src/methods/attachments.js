@@ -1,7 +1,9 @@
 const async = require('async');
 const fs = require('fs');
+const path = require('path');
 const https = require('https');
 const JSONStream = require('JSONStream');
+const mkdirp = require('mkdirp');
 
 /**
  * Parses the events from the provided file and downloads their attachments
@@ -14,6 +16,9 @@ exports.download = function (connection, backupDir, callback, log) {
   if (!log) {
     log = console.log;
   }
+
+  loadStreamMapIfNeed(backupDir, log);
+
   loadEventFile(connection, backupDir, function (error, attachments) {
     if (error) {
       log('Failed parsing event file for attachments' + error);
@@ -22,7 +27,7 @@ exports.download = function (connection, backupDir, callback, log) {
 
     // Download attachment files in 10 parralel calls
     async.mapLimit(attachments, 10, function (item, callback) {
-      getAttachment(connection, backupDir.attachmentsDir, item, callback, log);
+      getAttachment(connection, backupDir, item, callback, log);
     }, function (error) {
       if (error) {
         log('Error while downloading the attachments: ' + error);
@@ -37,6 +42,29 @@ exports.download = function (connection, backupDir, callback, log) {
 
 };
 
+/**
+ * Create a map
+ * @param {*} backupDir 
+ * @param {*} log 
+ * @returns 
+ */
+function loadStreamMapIfNeed(backupDir, log) {
+  if (! backupDir.settingAttachmentUseStreamsPath) return;
+  log('Loading streams Dir');
+  try {
+    const streamsTree = JSON.parse(fs.readFileSync(backupDir.streamsFile, 'utf8')) ;
+    function mapTree(childs, path) {
+      for (const child of childs) {
+        const childPath = path + '/' + child.name.replaceAll('..','__'); // escape all ".."
+        backupDir.streamsMap[child.id] = childPath;
+        if (child.childrens) mapTree(child.childrens, childPath);
+      }
+    }
+    mapTree(streamsTree.streams, '');
+  } catch (error) {
+    log('Error while reading streams: ' + error);
+  }
+}
 
 function loadEventFile(connection, backupDir, callback, log) {
   const attachments = [];
@@ -60,6 +88,7 @@ function loadEventFile(connection, backupDir, callback, log) {
         event.attachments.forEach(function (att) {
           if (att.id) {
             att.eventId = event.id;
+            att.streamId = event.streamId;
             attachments.push(att);
           } else {
             log('Invalid event: att.id is missing: ' + event);
@@ -87,9 +116,18 @@ function loadEventFile(connection, backupDir, callback, log) {
  * @param attachment
  * @param callback
  */
-function getAttachment(connection, attachmentsDir, attachment, callback, log) {
+async function getAttachment(connection, backupDir, attachment, callback, log) {
+  const attachmentsDir = backupDir.attachmentsDir
   const attName = attachment.eventId + '_' + attachment.fileName;
-  const attFile = attachmentsDir + attName;
+  let attFile = attachmentsDir + attName;
+  if (backupDir.settingAttachmentUseStreamsPath) {
+    let streamPath = backupDir.streamsMap[attachment.streamId];
+    if (streamPath) {
+      const attPath = path.resolve(attachmentsDir + streamPath);
+      await mkdirp(attPath);
+      attFile = attPath + '/' + attName;
+    }
+  }
 
   if (fs.existsSync(attFile)) {
     log('Skipping already existing attachment: ' + attFile);

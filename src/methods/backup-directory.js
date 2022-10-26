@@ -11,11 +11,14 @@ const BackupDirectory = module.exports = function (apiEndpoint, dir) {
   const rootDir = dir || './backup/';
   const url = new URL(apiEndpoint);
   const base = url.hostname + url.pathname.split('/').join('_');
+  this.settingAttachmentUseStreamsPath = true;
   this.baseDir = rootDir + base + '/';
   this.attachmentsDir = this.baseDir + 'attachments/';
   this.appProfilesDir = this.baseDir + 'app_profiles/';
   this.eventsFile = this.baseDir + 'events.json';
+  this.streamsFile = this.baseDir + 'streams.json';
   this.accessesFile = this.baseDir + 'accesses.json';
+  this.streamsMap = {}; // cache for stream structure if to store data attachement into it
 };
 
 /**
