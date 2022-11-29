@@ -32,11 +32,11 @@ async function restoreEvents (connection, sourcePath) {
     ['modified', 'modifiedBy', 'streamId', 'created', 'createdBy'].forEach((key) => { delete e[key]; });
     e.streamIds = e.streamIds.filter((streamId) => { return !streamId.startsWith('.'); }); // remove system streams
 
-    // uncomment the following line to change event Ids
-    e.oldId = e.id; e.id = cuid();
+    // uncomment the following line to change event Ids, usefull when loading on the same system
+    // e.oldId = e.id; e.id = cuid();
 
     // uncomment the following line to add a delay
-    // e.time = e.time + (365 * 24 * 60 * 60);
+    // e.time = e.time + (365 * 24 * 60 * 60 * 2);
 
     console.log('+', e.time, new Date(e.time * 1000));
     if (e.streamIds.length > 0) {
