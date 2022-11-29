@@ -56,7 +56,8 @@ then use it as following:
 const backup = require('pryv-backup');
 
 const settings = {
-      apiEndPoint: APIENDPOINT,  
+      service: SERVICE_INFO_URL,
+      username: USERNAME  
       password: PASSWORD,  
       includeTrashed: true, // default: false  
       includeAttachments: true // default: false

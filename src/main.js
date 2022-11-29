@@ -8,15 +8,15 @@ const pryv = require('pryv');
 
 const appId = 'pryv-backup';
 
-async function signInToPryv (context) {
-  if (! context.service) {
+async function signInToPryv(context) {
+  if (!context.service) {
     context.service = new pryv.Service(context.serviceInfoUrl);
   }
   const infos = await context.service.info();
-  if (! context.origin) {
+  if (!context.origin) {
     const url = new URL(infos.register);
     context.origin = url.protocol + '//' + url.hostname; // let's try with the url of service info
-  } 
+  }
   console.log('Login with origin: ' + context.origin);
   return await context.service.login(context.username, context.password, appId, context.origin);
 }
@@ -35,7 +35,7 @@ async function signInToPryv (context) {
  * @param callback {function}
  */
 exports.start = function (params, callback) {
-  signInToPryv(params).then(function(connection, err) {
+  signInToPryv(params).then(function (connection, err) {
     if (err) {
       console.log('Connection failed with Error:', err);
       return callback(err);
@@ -52,7 +52,7 @@ function startOnConnection (connection, params, callback, log) {
   }
 
   async.series([
-    function createDirectoryTree(done) {
+    function createDirectoryTree (done) {
       backupDirectory.createDirs(done, log);
     },
     function fetchData (done) {
@@ -71,7 +71,9 @@ function startOnConnection (connection, params, callback, log) {
       }
 
       async.mapSeries(['account', streamsRequest, 'accesses',
-          'followed-slices', 'profile/private' , 'profile/public', eventsRequest],
+        'followed-slices', 'profile/private', 'profile/public', 
+        eventsRequest]
+        ,
         function (resource, callback) {
           apiResources.toJSONFile({
             folder: backupDirectory.baseDir,
@@ -82,7 +84,7 @@ function startOnConnection (connection, params, callback, log) {
     },
     function fetchAppProfiles (stepDone) {
       const accessesData = JSON.parse(fs.readFileSync(backupDirectory.accessesFile, 'utf8'));
-      async.mapSeries(accessesData.accesses, function(access, callback) {
+      async.mapSeries(accessesData.accesses, function (access, callback) {
         if (access.type !== 'app') {
           return callback();
         }
@@ -90,9 +92,9 @@ function startOnConnection (connection, params, callback, log) {
           folder: backupDirectory.appProfilesDir,
           resource: 'profile/app',
           extraFileName: '_' + access.id,
-          connection: {endpoint: connection.endpoint, token: access.token}
+          connection: { endpoint: connection.endpoint, token: access.token }
         }, callback, log);
-      },stepDone);
+      }, stepDone);
     },
     function fetchAttachments (stepDone) {
       if (params.includeAttachments) {
@@ -109,7 +111,7 @@ function startOnConnection (connection, params, callback, log) {
     }
     callback();
   });
-};
+}
 
 /**
  * Expose BackupDirectory as well since it is a parameter of .start()

@@ -22,6 +22,7 @@
   },
   "scripts": {
     "start": "node scripts/start-backup.js",
+    "restore": "node scripts/start-restore.js",
     "test": "./node_modules/mocha/bin/mocha test/**/*.test.js",
     "test-travis": "./node_modules/istanbul/lib/cli.js cover ./node_modules/mocha/bin/_mocha -- -R spec ./test/**/*.test.js"
   },
