@@ -1,7 +1,7 @@
 {
   "name": "@pryv/account-backup",
   "description": "Backup your Pryv account",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": false,
   "keywords": [
     "Pryv",
@@ -23,8 +23,8 @@
   "scripts": {
     "start": "node scripts/start-backup.js",
     "restore": "node scripts/start-restore.js",
-    "test": "./node_modules/mocha/bin/mocha test/**/*.test.js",
-    "test-travis": "./node_modules/istanbul/lib/cli.js cover ./node_modules/mocha/bin/_mocha -- -R spec ./test/**/*.test.js"
+    "test": "mocha test/**/*.test.js",
+    "test-travis": "./node_modules/istanbul/lib/cli.js cover ./node_modules/./bin/_mocha -- -R spec ./test/**/*.test.js"
   },
   "contributors": [
     {
@@ -33,9 +33,9 @@
     }
   ],
   "dependencies": {
-    "JSONStream": "^1.3.4",
     "async": "~0.9.0",
     "cuid": "^2.1.8",
+    "JSONStream": "^1.3.4",
     "lodash": "^4.17.20",
     "mkdirp": "1.0.4",
     "nconf": "^0.11.0",
@@ -44,9 +44,9 @@
     "winston": "3.3.3"
   },
   "devDependencies": {
-    "superagent": "6.1.0",
-    "mocha": "^8.2.1",
-    "should": "^11.1.0"
+    "mocha": "^10.4.0",
+    "should": "^11.1.0",
+    "superagent": "6.1.0"
   },
   "license": "BSD-3-Clause"
 }
