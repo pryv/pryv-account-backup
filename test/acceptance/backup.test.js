@@ -44,7 +44,7 @@ describe('backup', function () {
     if (settings.backupDirectory) settings.backupDirectory.deleteDirs(done);
   });
 
-  it('should backup the correct folders and files', function (done) {
+  it('[SBTC] should backup the correct folders and files', function (done) {
     const time = Date.now()/1000;
     async.series([
         function startBackup(stepDone) {
@@ -53,7 +53,8 @@ describe('backup', function () {
         function checkFiles(stepDone) {
           resources.forEach(function(resource){
             const outputFilename = resource.replace('/', '_').split('?')[0] + '.json';
-            fs.existsSync(settings.backupDirectory.baseDir + '/' + outputFilename).should.equal(true);
+            const fullPath = settings.backupDirectory.baseDir + '/' + outputFilename;
+            fs.existsSync(fullPath).should.equal(true, 'Cannot find ' + fullPath);
           });
           stepDone();
         },
@@ -62,8 +63,8 @@ describe('backup', function () {
           events.events.forEach(function (event) {
             if (event.attachments) {
               event.attachments.forEach(function (att) {
-                const attFile = settings.backupDirectory.attachmentsDir + '/' + event.id + '_' + att.fileName;
-                fs.existsSync(attFile).should.equal(true);
+                const attFile = settings.backupDirectory.getAttachmentFilePath(att.fileName, event.id, event.streamIds[0])
+                fs.existsSync(attFile).should.equal(true, 'Cannot find ' + attFile);
               });
             }
           });
@@ -100,6 +101,7 @@ describe('backup', function () {
                         }
                       });
                     }
+                    
                     // find a way to test content
                     callback();
                   })

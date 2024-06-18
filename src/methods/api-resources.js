@@ -21,12 +21,14 @@ exports.toJSONFile = function streamApiToFile(params, callback, log) {
   log('Fetching: ' + params.resource + params.extraFileName + ' in folder: ' + params.folder);
   let outputFilename = null;
   let writeStream = null;
-
+  let fullPath = null;
 
   function openStreamsIfNeeded() {
       if (outputFilename) return;
      outputFilename = params.resource.replace('/', '_').split('?')[0] + params.extraFileName + '.json';
-     writeStream = fs.createWriteStream(params.folder  + outputFilename, { encoding: 'utf8' });
+     fullPath = params.folder  + outputFilename;
+     writeStream = fs.createWriteStream(fullPath, { encoding: 'utf8' });
+     log('Streaming data to: ' + fullPath);
   }
 
   const url = new URL(params.connection.endpoint);
@@ -67,10 +69,10 @@ exports.toJSONFile = function streamApiToFile(params, callback, log) {
 
     res.on('end', function () {
       openStreamsIfNeeded();
-      writeStream.end();
       done = true;
       log('Received: ' + outputFilename + ' '  + prettyPrint(total));
-      callback();
+      writeStream.end(callback);
+      //callback();
     });
 
   }).on('error', function (e) {

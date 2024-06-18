@@ -43,14 +43,12 @@ describe('api-resources', function () {
         BackupDirectory.deleteDirs(done);
     });
 
-    it('should retrieve the requested streams Pryv resource and save it to JSON', function (done) {
+    it('[SRRS] should retrieve the requested streams Pryv resource and save it to JSON', function (done) {
 
         params.resource = 'streams';
-
         api.toJSONFile(params, function(err) {
             should.not.exist(err);
-            console.log(params.folder+params.resource+'.json');
-            fs.existsSync(params.folder+params.resource+'.json').should.equal(true);
+            fs.existsSync(BackupDirectory.streamsFile).should.equal(true, 'Cannot find: ' + BackupDirectory.streamsFile);
             done();
         });
     });

@@ -18,7 +18,6 @@ exports.download = function (connection, backupDir, callback, log) {
   }
 
   loadStreamMapIfNeed(backupDir, log);
-
   loadEventFile(connection, backupDir, function (error, attachments) {
     if (error) {
       log('Failed parsing event file for attachments' + error);
@@ -26,8 +25,8 @@ exports.download = function (connection, backupDir, callback, log) {
     }
 
     // Download attachment files in 10 parralel calls
-    async.mapLimit(attachments, 10, function (item, callback) {
-      getAttachment(connection, backupDir, item, callback, log);
+    async.mapLimit(attachments, 10, function (item, callback2) {
+      getAttachment(connection, backupDir, item, callback2, log);
     }, function (error) {
       if (error) {
         log('Error while downloading the attachments: ' + error);
@@ -117,18 +116,7 @@ function loadEventFile(connection, backupDir, callback, log) {
  * @param callback
  */
 async function getAttachment(connection, backupDir, attachment, callback, log) {
-  const attachmentsDir = backupDir.attachmentsDir
-  const attName = attachment.eventId + '_' + attachment.fileName;
-  let attFile = attachmentsDir + attName;
-  if (backupDir.settingAttachmentUseStreamsPath) {
-    let streamPath = backupDir.streamsMap[attachment.streamId];
-    if (streamPath) {
-      const attPath = path.resolve(attachmentsDir + streamPath);
-      await mkdirp(attPath);
-      attFile = attPath + '/' + attName;
-    }
-  }
-
+  const attFile = backupDir.getAttachmentFilePath(attachment.fileName, attachment.eventId, attachment.streamId);
   if (fs.existsSync(attFile)) {
     log('Skipping already existing attachment: ' + attFile);
     return callback();
@@ -154,10 +142,10 @@ async function getAttachment(connection, backupDir, attachment, callback, log) {
     res.on('end', function () {
       fs.writeFile(attFile, binData, 'binary', function (err) {
         if (err) {
-          log('Error while writing attachment: ' + attName);
+          log('Error while writing attachment: ' + attFile);
           throw err;
         }
-        log('Attachment saved: ' + attName);
+        log('Attachment saved: ' + attFile);
         callback();
       });
     });

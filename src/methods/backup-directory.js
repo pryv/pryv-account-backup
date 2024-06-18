@@ -1,6 +1,7 @@
 const mkdirp = require('mkdirp');
 const fs = require('fs');
 const async = require('async');
+const path = require('path');
 
 /**
  * Object containing backup directories and files object as well as the function to generate them
@@ -8,17 +9,40 @@ const async = require('async');
  * @param apiEndpoint
  */
 const BackupDirectory = module.exports = function (apiEndpoint, dir) {
-  const rootDir = dir || './backup/';
+  const rootDir = dir || path.resolve(__dirname, '../../backup/');
   const url = new URL(apiEndpoint);
   const base = url.hostname + url.pathname.split('/').join('_');
   this.settingAttachmentUseStreamsPath = true;
-  this.baseDir = rootDir + base + '/';
-  this.attachmentsDir = this.baseDir + 'attachments/';
-  this.appProfilesDir = this.baseDir + 'app_profiles/';
-  this.eventsFile = this.baseDir + 'events.json';
-  this.streamsFile = this.baseDir + 'streams.json';
-  this.accessesFile = this.baseDir + 'accesses.json';
+  this.baseDir = path.resolve(rootDir, base) + '/';
+  this.attachmentsDir = path.resolve(this.baseDir, 'attachments') + '/';
+  this.appProfilesDir = path.resolve(this.baseDir, 'app_profiles') + '/';
+  this.eventsFile = path.resolve(this.baseDir, 'events.json');
+  this.streamsFile = path.resolve(this.baseDir, 'streams.json');
+  this.accessesFile = path.resolve(this.baseDir, 'accesses.json');
   this.streamsMap = {}; // cache for stream structure if to store data attachement into it
+};
+
+/**
+ * 
+ * @param {*} callback 
+ * @param {*} log 
+ */
+BackupDirectory.prototype.getAttachmentFilePath = function (
+  attachmentFileName,
+  eventId,
+  streamId
+) {
+  const attName = eventId + '_' + attachmentFileName;
+  let attFile = path.resolve(this.attachmentsDir, attName);
+  if (this.settingAttachmentUseStreamsPath) {
+    let streamPath = this.streamsMap[streamId];
+    if (streamPath) {
+      const attPath = path.resolve(this.attachmentsDir + streamPath);
+      mkdirp.sync(attPath);
+      attFile = path.resolve(attPath, attName);
+    }
+  }
+  return attFile;
 };
 
 /**
