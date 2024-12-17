@@ -1,5 +1,5 @@
 /**
- * Removed unused streams from a backup
+ * Remove unused streams from a backup
  */
 
 const fs = require('fs');
