@@ -6,6 +6,12 @@ const pryv = require('pryv');
 const restore = require('../src/restore.js');
 const context = {};
 
+// read v5+ returns a Promise instead of taking a callback. Wrap so the existing
+// async.series chain stays intact without rewriting the script.
+function readP (opts, callback) {
+  read(opts).then((value) => callback(null, value)).catch(callback);
+}
+
 // check BackupDirectory
 if (process.argv[2]) {
   if (!fs.existsSync(path.join(process.argv[2], 'events.json'))) { // skip
@@ -22,7 +28,7 @@ if (!context.backupSource) {
 
 async.series([
   function inputServiceInfo(done) {
-    read({ prompt: 'Service info URL: ', silent: false }, function (err, serviceInfoUrl) {
+    readP({ prompt: 'Service info URL: ', silent: false }, function (err, serviceInfoUrl) {
       if (!serviceInfoUrl || serviceInfoUrl.trim().length === 0) {
         serviceInfoUrl = 'https://reg.pryv.me/service/info';
         console.log('Using default serviceInfoUrl: ' + serviceInfoUrl);
@@ -39,13 +45,13 @@ async.series([
     });
   }
   , function inputUsername (done) {
-    read({ prompt: 'Username : ', silent: false }, function (err, username) {
+    readP({ prompt: 'Username : ', silent: false }, function (err, username) {
       context.username = username;
       done(err);
     });
   },
   function inputPassword (done) {
-    read({ prompt: 'Password : ', silent: true }, function (err, password) {
+    readP({ prompt: 'Password : ', silent: true }, function (err, password) {
       context.password = password;
       done(err);
     });

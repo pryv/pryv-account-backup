@@ -1,7 +1,12 @@
-const mkdirp = require('mkdirp');
 const fs = require('fs');
 const async = require('async');
 const path = require('path');
+
+// Native `fs.mkdir({recursive:true})` replaces the old `mkdirp` package
+// (mkdirp@3 went ESM-only; Node 10+ has the recursive option built in).
+function mkdirRecursive (dir) {
+  return fs.promises.mkdir(dir, { recursive: true });
+}
 
 /**
  * Object containing backup directories and files object as well as the function to generate them
@@ -66,7 +71,7 @@ BackupDirectory.prototype.createDirs = function (callback, log) {
   }
   async.series([
     function createBaseDir(stepDone) {
-      mkdirp(this.baseDir).then(function (res, err){
+      mkdirRecursive(this.baseDir).then(function (res, err){
         if (err) {
           console.error('Error while creating base dir: ' + this.baseDir, err);
           return stepDone(err);
@@ -76,7 +81,7 @@ BackupDirectory.prototype.createDirs = function (callback, log) {
       }.bind(this));
     }.bind(this),
     function createAppProfileDir(stepDone) {
-      mkdirp(this.appProfilesDir).then(function (res, err){
+      mkdirRecursive(this.appProfilesDir).then(function (res, err){
         if (err) {
           console.error('Error while creating accesses dir: ' + this.appProfilesDir, err);
           return stepDone(err);
@@ -86,7 +91,7 @@ BackupDirectory.prototype.createDirs = function (callback, log) {
       }.bind(this));
     }.bind(this),
     function createAttachmentsDir(stepDone) {
-      mkdirp(this.attachmentsDir).then(function (res, err){
+      mkdirRecursive(this.attachmentsDir).then(function (res, err){
         if (err) {
           console.error('Error while creating attachments dir: ' + this.attachmentsDir, err);
           return stepDone(err);

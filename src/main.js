@@ -1,12 +1,10 @@
 const fs = require('fs');
 const async = require('async');
-const _ = require('lodash');
 const apiResources = require('./methods/api-resources');
 const attachments = require('./methods/attachments');
 const hfData = require('./methods/hf-data');
 const webhooksExport = require('./methods/webhooks-export');
 const manifest = require('./methods/manifest');
-const url = require('url');
 const pryv = require('pryv');
 const pkg = require('../package.json');
 

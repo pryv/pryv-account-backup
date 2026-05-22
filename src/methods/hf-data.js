@@ -2,7 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const async = require('async');
-const mkdirp = require('mkdirp');
 
 /**
  * For every `series:*` event in `events.json`, fetch the data points via
@@ -44,7 +43,8 @@ exports.download = function (connection, backupDir, callback, log) {
   }
 
   log('hf-data: fetching data points for ' + seriesEvents.length + ' series event(s)');
-  mkdirp(backupDir.hfDataDir).then(function () {
+  // Native fs.mkdir({recursive:true}) replaces mkdirp (which went ESM-only in v3).
+  fs.promises.mkdir(backupDir.hfDataDir, { recursive: true }).then(function () {
     async.mapLimit(seriesEvents, 4, function (event, done) {
       fetchOneSeries(connection, event.id, backupDir.hfDataDir, log, done);
     }, function (err) {

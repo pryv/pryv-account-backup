@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const cuid = require('cuid');
 
 async function restoreStreams (connection, sourcePath) {
   const ressourceFile = path.join(sourcePath, 'streams.json');
@@ -125,31 +124,40 @@ async function uploadEventsWithAttachments (connection, eventsWithAttachments, s
   const res = [];
   for (let i = 0; i < eventsWithAttachments.length; i++) {
     const e = eventsWithAttachments[i];
-    console.log('Uploading event with attachment ', e.id);
-    // Plan 72 C.4: pryv@2.3.3 Connection exposes createEventWithFile only
-    // (single-attachment). Multi-attachment events log a warning per skipped
-    // file so a restore-side auditor can reconcile against the source.
-    // Upgrading to pryv@3+ (multi-attachment via addFileToEvent) would lift
-    // this; deferred to a separate backlog item.
-    if (e.attachments.length > 1) {
-      console.log('WARN: multi-attachment event ' + e.id + ' — only attachment[0] (' +
-        e.attachments[0].fileName + ') restored; ' + (e.attachments.length - 1) +
-        ' file(s) skipped: ' + e.attachments.slice(1).map(function (a) { return a.fileName; }).join(', '));
-    }
-    const a = e.attachments[0];
-    // console.log(a, e);
+    const attachmentCount = e.attachments.length;
+    console.log('Uploading event with ' + attachmentCount + ' attachment(s):', e.id);
     const fileId = e.oldId || e.id;
+    const attachmentList = e.attachments;
     delete e.attachments;
     delete e.oldId;
-    const filepath = path.join(sourcePath, 'attachments', fileId + '_' + a.fileName);
     try {
-      const result = await connection.createEventWithFile(e, filepath);
-      res.push(result);
-    } catch (e) {
-      if (e.response && e.response.body) {
-        res.push(e.response.body);
+      let result;
+      if (attachmentCount === 1) {
+        // Single-attachment path — keep using createEventWithFile for the
+        // simplest case (no FormData ceremony required).
+        const a = attachmentList[0];
+        const filepath = path.join(sourcePath, 'attachments', fileId + '_' + a.fileName);
+        result = await connection.createEventWithFile(e, filepath);
       } else {
-        res.push('' + e);
+        // Plan 72 C.4 + 0.4.0: multi-attachment restore via pryv@3's
+        // createEventWithFormData. Native Node 18+ FormData + fs.openAsBlob
+        // upload N file parts in a single POST /events call.
+        const formData = new FormData();
+        for (const a of attachmentList) {
+          const filepath = path.join(sourcePath, 'attachments', fileId + '_' + a.fileName);
+          const mimeType = a.type || 'application/octet-stream';
+          const fileBlob = await fs.promises.readFile(filepath)
+            .then((buf) => new Blob([buf], { type: mimeType }));
+          formData.append('file', fileBlob, a.fileName);
+        }
+        result = await connection.createEventWithFormData(e, formData);
+      }
+      res.push(result);
+    } catch (err) {
+      if (err && err.response && err.response.body) {
+        res.push(err.response.body);
+      } else {
+        res.push('' + err);
       }
     }
   }

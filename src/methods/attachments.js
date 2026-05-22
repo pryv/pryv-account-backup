@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const JSONStream = require('JSONStream');
-const mkdirp = require('mkdirp');
 
 /**
  * Parses the events from the provided file and downloads their attachments

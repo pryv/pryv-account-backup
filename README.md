@@ -9,7 +9,7 @@ Simple script to backup your Pryv.io data
 
 ## Script Usage
 
-*Prerequisites:* [Node](https://nodejs.org/en/)
+*Prerequisites:* [Node](https://nodejs.org/en/) 18 or newer (required since 0.4.0 — uses native `FormData` + `fs.openAsBlob`).
 
 In your terminal, run the following commands:
 
