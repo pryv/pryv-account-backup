@@ -3,8 +3,12 @@ const async = require('async');
 const _ = require('lodash');
 const apiResources = require('./methods/api-resources');
 const attachments = require('./methods/attachments');
+const hfData = require('./methods/hf-data');
+const webhooksExport = require('./methods/webhooks-export');
+const manifest = require('./methods/manifest');
 const url = require('url');
 const pryv = require('pryv');
+const pkg = require('../package.json');
 
 const appId = 'pryv-backup';
 
@@ -65,14 +69,17 @@ function startOnConnection (connection, params, callback, log) {
 
       let eventsRequest = 'events?fromTime=-2350373077&toTime=2350373077';
       let streamsRequest = 'streams';
+      let auditLogsRequest = 'audit/logs?fromTime=-2350373077&toTime=2350373077';
       if (params.includeTrashed) {
         eventsRequest += '&state=all';
         streamsRequest += '?state=all';
       }
 
+      // Plan 72 Phase C: dropped 'followed-slices' (v1-only, returns 404 in v2).
+      // Added 'audit/logs' (C.1) — fetched alongside the rest as a JSON file.
       async.mapSeries(['account', streamsRequest, 'accesses',
-        'followed-slices', 'profile/private', 'profile/public', 
-        eventsRequest]
+        'profile/private', 'profile/public',
+        eventsRequest, auditLogsRequest]
         ,
         function (resource, callback) {
           apiResources.toJSONFile({
@@ -103,6 +110,18 @@ function startOnConnection (connection, params, callback, log) {
         log('Skipping attachments');
         stepDone();
       }
+    },
+    // Plan 72 Phase C.2: fetch HFS data points for every series:* event.
+    function fetchHFData (stepDone) {
+      hfData.download(connection, backupDirectory, stepDone, log);
+    },
+    // Plan 72 Phase C.3: fetch webhooks per-access.
+    function fetchWebhooks (stepDone) {
+      webhooksExport.download(connection, backupDirectory, stepDone, log);
+    },
+    // Plan 72 Phase C: per-file sha256 integrity manifest.
+    function writeManifest (stepDone) {
+      manifest.generate(backupDirectory.baseDir, { version: pkg.version, log }, stepDone);
     }
   ], function (err) {
     if (err) {

@@ -16,9 +16,13 @@ const BackupDirectory = module.exports = function (apiEndpoint, dir) {
   this.baseDir = path.resolve(rootDir, base) + '/';
   this.attachmentsDir = path.resolve(this.baseDir, 'attachments') + '/';
   this.appProfilesDir = path.resolve(this.baseDir, 'app_profiles') + '/';
+  this.hfDataDir = path.resolve(this.baseDir, 'hf-data') + '/';
   this.eventsFile = path.resolve(this.baseDir, 'events.json');
   this.streamsFile = path.resolve(this.baseDir, 'streams.json');
   this.accessesFile = path.resolve(this.baseDir, 'accesses.json');
+  this.auditLogsFile = path.resolve(this.baseDir, 'audit_logs.json');
+  this.webhooksFile = path.resolve(this.baseDir, 'webhooks.json');
+  this.manifestFile = path.resolve(this.baseDir, 'manifest.json');
   this.streamsMap = {}; // cache for stream structure if to store data attachement into it
 };
 

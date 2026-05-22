@@ -32,13 +32,17 @@ Your data will be downloaded in `./backup/{apiEndpoint}/`
 This downloads the following in JSON format:
 * Public profile
 * Accesses
-* Followed slices
 * Streams
 * Events
 * Account Info
+* **Audit log** (`audit_logs.json`) — every audited operation on the subject (added in 0.3.0)
+* **Webhooks** per access (`webhooks.json`, keyed by `accessId`) — added in 0.3.0
 
 As well as the following in binary files:
-* Attachment files
+* Attachment files (when `includeAttachments: true`)
+* **High-frequency series data points** (`hf-data/<eventId>.json`, one per `series:*` event) — added in 0.3.0
+
+Finally, a **per-file integrity manifest** is written to `manifest.json` — sha256 of every other file in the backup, plus tool version + ISO generation timestamp. A third party reading the backup tarball can re-hash each file and compare to detect truncation, corruption, or tampering mid-flight. The `manifest.verify(rootDir, cb)` helper does this programmatically.
 
 ### Running conditions
 
