@@ -7,9 +7,9 @@ const async = require('async');
  * token and aggregate the result into `<backupDir>/webhooks.json` keyed by
  * accessId.
  *
- * Plan 72 Phase C.3: previously, webhooks were not fetched at all, so the
- * DSAR dump was missing every webhook the subject had configured. Per-access
- * fetch matches the API's permissions model (each access only sees its own
+ * Earlier backup versions never fetched webhooks at all, so the DSAR dump
+ * was missing every webhook the subject had configured. Per-access fetch
+ * matches the API's permissions model (each access only sees its own
  * webhooks; the personal access sees all).
  *
  * Output shape:
