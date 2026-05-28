@@ -8,10 +8,9 @@ const async = require('async');
  * `GET /events/<eventId>/series` and write them to
  * `<backupDir>/hf-data/<eventId>.json` (one file per series event).
  *
- * Plan 72 Phase C.2: previously, the v0.2.3 backup downloaded the series
- * event "container" but never fetched the actual data points, so a
- * GDPR Art.15 portable dump was missing the bulk of the user's data on
- * any HFS-using deployment.
+ * Earlier backup versions downloaded the series event "container" but never
+ * fetched the actual data points, so a GDPR Art.15 portable dump was missing
+ * the bulk of the user's data on any HFS-using deployment.
  *
  * @param {object} connection { endpoint, token } (pryv lib connection shape)
  * @param {object} backupDir BackupDirectory instance

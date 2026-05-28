@@ -42,8 +42,8 @@ async function restoreEvents (connection, sourcePath) {
       if (e.attachments && e.attachments.length > 0) {
         eventsWithAttachments.push(e);
       } else if (e.type.startsWith('series:')) {
-        // Plan 72 C.4: keep oldId so we can map it to the new event id after
-        // events.create and locate the matching hf-data/<oldId>.json file.
+        // Keep oldId so we can map it to the new event id after events.create
+        // and locate the matching hf-data/<oldId>.json file.
         e.oldId = e.id;
         delete e.id;
         delete e.attachments;
@@ -58,11 +58,10 @@ async function restoreEvents (connection, sourcePath) {
 
   await uploadInBatch(connection, standardEvents, 'events');
   await uploadEventsWithAttachments(connection, eventsWithAttachments, sourcePath);
-  // Plan 72 C.4: series events used to be filtered but never restored
-  // (eventsSeries was a dead bucket since at least v0.2.x). Now we create
-  // the container event AND, if the backup carries the matching
-  // hf-data/<oldId>.json, re-upload the data points via the lib's
-  // addPointsToHFEvent helper.
+  // Series events used to be filtered but never restored (eventsSeries was
+  // a dead bucket since at least v0.2.x). Now we create the container event
+  // AND, if the backup carries the matching hf-data/<oldId>.json, re-upload
+  // the data points via the lib's addPointsToHFEvent helper.
   await restoreSeriesEvents(connection, eventsSeries, sourcePath);
 }
 
@@ -139,9 +138,9 @@ async function uploadEventsWithAttachments (connection, eventsWithAttachments, s
         const filepath = path.join(sourcePath, 'attachments', fileId + '_' + a.fileName);
         result = await connection.createEventWithFile(e, filepath);
       } else {
-        // Plan 72 C.4 + 0.4.0: multi-attachment restore via pryv@3's
-        // createEventWithFormData. Native Node 18+ FormData + fs.openAsBlob
-        // upload N file parts in a single POST /events call.
+        // Multi-attachment restore via pryv@3's createEventWithFormData.
+        // Native Node 18+ FormData + fs.openAsBlob upload N file parts in a
+        // single POST /events call.
         const formData = new FormData();
         for (const a of attachmentList) {
           const filepath = path.join(sourcePath, 'attachments', fileId + '_' + a.fileName);

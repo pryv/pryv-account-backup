@@ -73,8 +73,8 @@ function startOnConnection (connection, params, callback, log) {
         streamsRequest += '?state=all';
       }
 
-      // Plan 72 Phase C: dropped 'followed-slices' (v1-only, returns 404 in v2).
-      // Added 'audit/logs' (C.1) — fetched alongside the rest as a JSON file.
+      // 'followed-slices' is v1-only (returns 404 in v2) — not fetched.
+      // 'audit/logs' is fetched alongside the rest as a JSON file.
       async.mapSeries(['account', streamsRequest, 'accesses',
         'profile/private', 'profile/public',
         eventsRequest, auditLogsRequest]
@@ -109,15 +109,15 @@ function startOnConnection (connection, params, callback, log) {
         stepDone();
       }
     },
-    // Plan 72 Phase C.2: fetch HFS data points for every series:* event.
+    // Fetch HFS data points for every series:* event.
     function fetchHFData (stepDone) {
       hfData.download(connection, backupDirectory, stepDone, log);
     },
-    // Plan 72 Phase C.3: fetch webhooks per-access.
+    // Fetch webhooks per-access.
     function fetchWebhooks (stepDone) {
       webhooksExport.download(connection, backupDirectory, stepDone, log);
     },
-    // Plan 72 Phase C: per-file sha256 integrity manifest.
+    // Write the per-file sha256 integrity manifest.
     function writeManifest (stepDone) {
       manifest.generate(backupDirectory.baseDir, { version: pkg.version, log }, stepDone);
     }

@@ -10,9 +10,9 @@ const ALGORITHM = 'sha256';
  * Walks `rootDir` recursively, computes a sha256 of every regular file (other
  * than the manifest itself), and writes the manifest to `<rootDir>/manifest.json`.
  *
- * The manifest is the integrity hash referenced in Plan 72 Phase C — a third
- * party reading the backup tarball can re-hash each file and compare to detect
- * truncation, corruption, or tampering mid-flight.
+ * The manifest is the integrity hash for the backup: a third party reading the
+ * backup tarball can re-hash each file and compare to detect truncation,
+ * corruption, or tampering mid-flight.
  *
  * @param {string} rootDir absolute backup directory (the one containing
  *   events.json, streams.json, ...).

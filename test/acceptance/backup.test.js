@@ -29,9 +29,9 @@ describe('backup', function () {
 
     const eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000 + '&state=all';
     const streamsRequest = 'streams?state=all';
-    // Plan 72 Phase C: dropped 'followed-slices' (v1-only, returns 404 in v2);
-    // 'audit/logs' added. 'webhooks.json' + 'manifest.json' + 'hf-data/*'
-    // are produced by separate modules and checked further down.
+    // 'followed-slices' is v1-only (returns 404 in v2); 'audit/logs' is
+    // included. 'webhooks.json' + 'manifest.json' + 'hf-data/*' are produced
+    // by separate modules and checked further down.
     resources = ['account', streamsRequest, 'accesses', 'profile/public', eventsRequest, 'audit/logs?fromTime=-2350373077&toTime=2350373077'];
 
     backup.signInToPryv(settings).then((conn, err) => { 
@@ -73,8 +73,8 @@ describe('backup', function () {
           });
           stepDone();
         },
-        // Plan 72 Phase C: the DSAR-extension files must also be present.
-        function checkPhaseCArtifacts(stepDone) {
+        // The DSAR-extension artefacts must also be present.
+        function checkDsarArtifacts(stepDone) {
           fs.existsSync(settings.backupDirectory.webhooksFile).should.equal(true, 'webhooks.json missing');
           fs.existsSync(settings.backupDirectory.manifestFile).should.equal(true, 'manifest.json missing');
           // hf-data dir only exists if the account has series events; tolerate absence.
