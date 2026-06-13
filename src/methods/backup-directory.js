@@ -22,9 +22,12 @@ const BackupDirectory = module.exports = function (apiEndpoint, dir) {
   this.attachmentsDir = path.resolve(this.baseDir, 'attachments') + '/';
   this.appProfilesDir = path.resolve(this.baseDir, 'app_profiles') + '/';
   this.hfDataDir = path.resolve(this.baseDir, 'hf-data') + '/';
-  this.eventsFile = path.resolve(this.baseDir, 'events.json');
+  this.accessesHistoryDir = path.resolve(this.baseDir, 'accesses-history') + '/'; // 0.5.0+: per-access version-history files (opt-in)
+  this.eventsFile = path.resolve(this.baseDir, 'events.json'); // legacy single-shot file (pre-0.5.0)
+  this.eventsChunkPrefix = 'events-'; // 0.5.0+ chunked files: events-YYYY-MM.json
   this.streamsFile = path.resolve(this.baseDir, 'streams.json');
   this.accessesFile = path.resolve(this.baseDir, 'accesses.json');
+  this.accessesAllFile = path.resolve(this.baseDir, 'accesses-all.json'); // 0.5.0+: deletions + expired
   this.auditLogsFile = path.resolve(this.baseDir, 'audit_logs.json');
   this.webhooksFile = path.resolve(this.baseDir, 'webhooks.json');
   this.manifestFile = path.resolve(this.baseDir, 'manifest.json');
@@ -102,6 +105,41 @@ BackupDirectory.prototype.createDirs = function (callback, log) {
       }.bind(this));
     }.bind(this)
   ], callback);
+};
+
+/**
+ * Whether the backup directory already carries event data (legacy single-file
+ * `events.json` or any chunked `events-YYYY-MM.json`). Used to short-circuit
+ * re-runs that should resume rather than re-fetch.
+ * @returns {boolean}
+ */
+BackupDirectory.prototype.hasEventsData = function () {
+  if (fs.existsSync(this.eventsFile)) return true;
+  if (!fs.existsSync(this.baseDir)) return false;
+  const entries = fs.readdirSync(this.baseDir);
+  for (const name of entries) {
+    if (name.startsWith(this.eventsChunkPrefix) && name.endsWith('.json')) return true;
+  }
+  return false;
+};
+
+/**
+ * List event-data files in the backup directory, in sorted order. Includes
+ * both the legacy single-file `events.json` (older backups) and chunked
+ * `events-YYYY-MM.json` files (0.5.0+). Returns absolute paths.
+ * @returns {string[]}
+ */
+BackupDirectory.prototype.listEventFiles = function () {
+  const files = [];
+  if (fs.existsSync(this.eventsFile)) files.push(this.eventsFile);
+  if (fs.existsSync(this.baseDir)) {
+    const entries = fs.readdirSync(this.baseDir).filter((n) =>
+      n.startsWith(this.eventsChunkPrefix) && n.endsWith('.json')
+    );
+    entries.sort();
+    for (const name of entries) files.push(path.resolve(this.baseDir, name));
+  }
+  return files;
 };
 
 /**

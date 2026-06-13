@@ -56,17 +56,39 @@ async.series([
         done(err);
       });
   },
+  function askIncludeAccessHistory (done) {
+    readP({
+      prompt: 'Also fetch per-access version history? (O(N) calls, default N) Y/N : ',
+      silent: false
+    }, function (err, res) {
+      context.includeAccessHistory = (res.toLowerCase() === 'y');
+      done(err);
+    });
+  },
+  function askEventsChunkMonths (done) {
+    readP({ prompt: 'Events chunk size in months (default 1) : ', silent: false },
+      function (err, res) {
+        const n = parseInt((res || '').trim(), 10);
+        context.eventsChunkMonths = (Number.isFinite(n) && n > 0) ? n : 1;
+        done(err);
+      });
+  },
   function askOverwriteEvents (done) {
     const apiEndpoint = pryv.Service.buildAPIEndpoint(context.info, context.username);
     context.backupDirectory = new BackupDirectory(apiEndpoint);
-    if (fs.existsSync(context.backupDirectory.eventsFile)) {
+    if (context.backupDirectory.hasEventsData()) {
       readP({
-        prompt: context.backupDirectory.eventsFile + ' exists, restart attachments sync only?\n' +
-          '[N] will delete current events.json file and backup everything Y/N ? (default Y)',
+        prompt: 'Event files already exist in ' + context.backupDirectory.baseDir + '. ' +
+          'Restart attachments sync only?\n' +
+          '[N] will delete existing event files and backup everything Y/N ? (default Y)',
         silent: false
       }, function (err, resetQ) {
         if (resetQ.toLowerCase() === 'n') {
-          fs.unlinkSync(context.backupDirectory.eventsFile);
+          // Remove legacy single-file + all chunked event files so the
+          // backup re-fetches from scratch.
+          for (const file of context.backupDirectory.listEventFiles()) {
+            fs.unlinkSync(file);
+          }
           console.log('Full backup restart');
         }
         done(err);

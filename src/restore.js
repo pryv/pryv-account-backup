@@ -1,6 +1,24 @@
 const fs = require('fs');
 const path = require('path');
 
+/**
+ * Return event-data files in a backup directory, sorted. Includes the legacy
+ * single-file `events.json` (older backups) and any chunked
+ * `events-YYYY-MM.json` (0.5.0+).
+ */
+function listEventFiles (sourcePath) {
+  const files = [];
+  const legacy = path.join(sourcePath, 'events.json');
+  if (fs.existsSync(legacy)) files.push(legacy);
+  if (fs.existsSync(sourcePath)) {
+    const chunks = fs.readdirSync(sourcePath)
+      .filter((n) => n.startsWith('events-') && n.endsWith('.json'))
+      .sort();
+    for (const name of chunks) files.push(path.join(sourcePath, name));
+  }
+  return files;
+}
+
 async function restoreStreams (connection, sourcePath) {
   const ressourceFile = path.join(sourcePath, 'streams.json');
   const content = JSON.parse(fs.readFileSync(ressourceFile, 'utf-8'));
@@ -22,12 +40,25 @@ async function restoreStreams (connection, sourcePath) {
 }
 
 async function restoreEvents (connection, sourcePath) {
-  const eventFile = path.join(sourcePath, 'events.json');
-  const content = JSON.parse(fs.readFileSync(eventFile, 'utf-8'));
+  // 0.5.0+ writes one `events-YYYY-MM.json` per chunk; older backups have a
+  // single `events.json`. Read whichever exists (or both, sorted) and
+  // concatenate the `events` arrays before bucketing.
+  const eventFiles = listEventFiles(sourcePath);
+  if (eventFiles.length === 0) {
+    throw new Error('No events.json or events-YYYY-MM.json found in ' + sourcePath);
+  }
+  const allEvents = [];
+  for (const file of eventFiles) {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    if (Array.isArray(parsed.events)) {
+      for (const e of parsed.events) allEvents.push(e);
+    }
+  }
+  console.log('Restoring ' + allEvents.length + ' event(s) from ' + eventFiles.length + ' file(s).');
   const standardEvents = [];
   const eventsWithAttachments = [];
   const eventsSeries = [];
-  content.events.forEach((e) => {
+  allEvents.forEach((e) => {
     ['modified', 'modifiedBy', 'streamId', 'created', 'createdBy'].forEach((key) => { delete e[key]; });
     e.streamIds = e.streamIds.filter((streamId) => { return !streamId.startsWith('.'); }); // remove system streams
 

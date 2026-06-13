@@ -31,9 +31,9 @@ Your data will be downloaded in `./backup/{apiEndpoint}/`
 
 This downloads the following in JSON format:
 * Public profile
-* Accesses
+* Accesses — current-snapshot `accesses.json` **plus `accesses-all.json` (revoked + expired) since 0.5.0**, and optional **`accesses-history/<accessId>.json`** per access (via `?includeHistory=true`, opt-in CLI prompt) for the full disclosure-history view (consent-state-at-time-of-access provenance)
 * Streams
-* Events
+* Events — **chunked by UTC month into `events-YYYY-MM.json` files since 0.5.0** so multi-GB subjects don't time out the single round-trip; older backups stay in a single `events.json` and restore cleanly
 * Account Info
 * **Audit log** (`audit_logs.json`) — every audited operation on the subject (added in 0.3.0)
 * **Webhooks** per access (`webhooks.json`, keyed by `accessId`) — added in 0.3.0
