@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.5.0 — 2026-06-13 — Chunked events + access-history completeness (DSAR)
+
+Three DSAR-completeness items in a single release:
+
+- **Chunked events fetch** — closes the last completeness gap noted in 0.3.0's "Known gaps" section: the single-shot `events?fromTime=…&toTime=…` round-trip is replaced with monthly time-range chunks so multi-GB subjects (long-running research participants, fitness-tracker subjects with years of high-frequency series, etc.) don't time out at the API gateway or OOM the caller's environment.
+- **`accesses-all.json` (deletions + expired)** — the disclosure history now covers revoked and expired access tokens, which is what GDPR Art.15(1)(c) (recipients), Art.15(1)(a) (purposes of processing — consent-state-at-time-of-access provenance) and CCPA §1798.110 actually require. The current snapshot (`accesses.json`) is still written as before, so anything that currently keys on `accessId` keeps working.
+- **Per-access version history (opt-in)** — `accesses-history/<accessId>.json` per access, fetched via `GET /accesses/<id>?includeHistory=true`. Off by default (O(N) calls); the CLI prompts at startup.
+
+### Added
+
+- **Chunked events fetch.** New module `src/methods/events-chunked.js` probes the subject's earliest and latest event time with two `limit=1` calls (sortAscending=true for the floor, default desc for the ceiling), then iterates monthly UTC-aligned windows. Each window writes its own file `events-YYYY-MM.json` carrying the standard API response shape `{ events: [...], meta: {...} }`. Default chunk size is 1 month; the CLI prompts for an override.
+- **`accesses-all.json`** — second fetch of `GET /accesses?includeDeletions=true&includeExpired=true` runs alongside the standard current-snapshot `accesses.json`. The response shape mirrors `accesses.json` and adds an `accessDeletions` array with all soft-deleted (revoked) access rows. Useful when an Art.15 / Art.20 / §1798.110 disclosure needs the full sharing-history view, not just the live-tokens snapshot. (CMC counterparty metadata — `clientData.cmc.counterparty` + `clientData.cmc.apiEndpoint` — was already in `accesses.json` today; the API exposes the full `clientData` field verbatim, so no extra fetch is needed for cross-border narrative.)
+- **`accesses-history/<accessId>.json`** — per-access version-history files, opt-in via a new CLI prompt ("Also fetch per-access version history?"). Each file carries `{ access, history: [...], current }` per the `accesses.getOne?includeHistory=true` response shape. Off by default because it's O(N) in the access count; a typical subject has ≤20 accesses, but a long-running deployment may have hundreds. Discharged what was listed as the "Per-access version history" gap.
+- **`backup-directory` chunk helpers** — `BackupDirectory#hasEventsData()` returns true when either the legacy `events.json` or any `events-YYYY-MM.json` is present; `BackupDirectory#listEventFiles()` returns all event-data files sorted (legacy first, then chunks). Used by both the backup skip-check and the restore-side concatenation.
+- **`BackupDirectory#accessesAllFile`** alongside `accessesFile`; **`BackupDirectory#accessesHistoryDir`** for the per-access version-history directory.
+- **`apiResources.toJSONFile`** accepts an optional `filename` override (used by the access-history walker to produce `<accessId>.json` files without leaking the `accesses_…` prefix the resource-derived naming would otherwise create).
+- **`[PACE]` + `[PAVH]` test suites** (`test/unit/events-chunked.test.js`) — 12 `[PACE]` tests covering monthly window math (year-boundary crossing, `chunkMonths>1` quarterly chunks, `from==to` instant subject, first/last-window clipping), `formatLabel` zero-padding, and chunk-file discovery, plus 2 `[PAVH]` tests covering the `accesses-all` file path and the `accesses-history` directory path. Run without credentials.
+
+### Changed
+
+- **Restore-side `restoreEvents`** now scans for both legacy `events.json` and any `events-YYYY-MM.json` chunks, concatenates the `events` arrays in sorted order, and buckets into standard / with-attachments / series as before. Backups produced by 0.4.0 and earlier still restore cleanly.
+- **CLI `scripts/start-backup.js`** prompts for the events chunk size (default 1 month). The "events already exist" overwrite check now keys on `hasEventsData()` instead of the bare `events.json` path, and deletes all event-data files (legacy + chunks) on full restart.
+- **CLI `scripts/start-restore.js`** accepts either a directory carrying `events.json` (older backups) or any `events-YYYY-MM.json` (0.5.0+) as a valid backup source.
+
+### Compatibility
+
+- Backups produced by 0.4.0 and earlier (`events.json` single-file) restore against 0.5.0 with no migration step.
+- Manifests produced by 0.5.0 hash each chunk file independently; the integrity verification flow is unchanged (`manifest.verify(rootDir, cb)`).
+- `audit/logs?fromTime=…&toTime=…` remains a single-shot fetch in this release — chunking the audit log is a separate concern (the audit row volume is typically orders of magnitude smaller than user events).
+
+### Known gaps still open after this release
+
+- **Jurisdiction inference per counterparty host** — `clientData.cmc.counterparty.host` carries the federation hostname but jurisdiction-per-host is the implementer's responsibility (no host-to-country registry in the API).
+
+### Operator security note
+
+The backup bundle includes `profile_private.json`, which carries `profile.mfa = { content, recoveryCodes }` verbatim. The 10 recovery codes can bypass the SMS challenge to deactivate MFA, and `content` may carry the subject's phone number. **Treat the backup as a secret on par with a password-reset link** — transport over a secure channel, document destruction policy, and consider rotating recovery codes (re-run MFA activate-confirm on the source account) after the disclosure is complete. The 0.4.0 → 0.5.0 transition does not change this behavior; the note is added here because the symmetry audit re-verified that this is by-design (the subject IS entitled to their full MFA state).
+
 ## 0.4.0 — 2026-05-22 — Dependency upgrade + multi-attachment restore (Plan 72 follow-up)
 
 Squashed into the same Plan 72 Phase C session: comprehensive dependency upgrade to clear the GitHub Dependabot queue and lift the `pryv@2.3.3` single-attachment limitation that 0.3.0's restore-side notes documented as a known gap.

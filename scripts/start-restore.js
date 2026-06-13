@@ -12,10 +12,19 @@ function readP (opts, callback) {
   read(opts).then((value) => callback(null, value)).catch(callback);
 }
 
-// check BackupDirectory
+// Accept either legacy single-file events.json (older backups) or any chunked
+// events-YYYY-MM.json (0.5.0+) as evidence that the directory is a valid
+// backup source.
+function backupHasEvents (dir) {
+  if (fs.existsSync(path.join(dir, 'events.json'))) return true;
+  if (!fs.existsSync(dir)) return false;
+  return fs.readdirSync(dir).some((n) => n.startsWith('events-') && n.endsWith('.json'));
+}
+
 if (process.argv[2]) {
-  if (!fs.existsSync(path.join(process.argv[2], 'events.json'))) { // skip
-    console.log('Directory [' + process.argv[2] + '] is not a valid directory');
+  if (!backupHasEvents(process.argv[2])) { // skip
+    console.log('Directory [' + process.argv[2] + '] is not a valid backup directory ' +
+      '(no events.json or events-YYYY-MM.json found)');
   } else {
     context.backupSource = process.argv[2];
   }

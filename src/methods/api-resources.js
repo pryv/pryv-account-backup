@@ -25,7 +25,11 @@ exports.toJSONFile = function streamApiToFile(params, callback, log) {
 
   function openStreamsIfNeeded() {
       if (outputFilename) return;
-     outputFilename = params.resource.replace('/', '_').split('?')[0] + params.extraFileName + '.json';
+     // `params.filename`, when present, overrides the resource-derived name
+     // (used by accesses-history to produce one file per composite access
+     // id without leaking `accesses_…` prefixes).
+     outputFilename = params.filename ||
+       (params.resource.replace('/', '_').split('?')[0] + params.extraFileName + '.json');
      fullPath = params.folder  + outputFilename;
      writeStream = fs.createWriteStream(fullPath, { encoding: 'utf8' });
      log('Streaming data to: ' + fullPath);

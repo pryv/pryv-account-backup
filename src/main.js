@@ -4,6 +4,8 @@ const apiResources = require('./methods/api-resources');
 const attachments = require('./methods/attachments');
 const hfData = require('./methods/hf-data');
 const webhooksExport = require('./methods/webhooks-export');
+const eventsChunked = require('./methods/events-chunked');
+const accessesHistory = require('./methods/accesses-history');
 const manifest = require('./methods/manifest');
 const pryv = require('pryv');
 const pkg = require('../package.json');
@@ -60,32 +62,54 @@ function startOnConnection (connection, params, callback, log) {
     function fetchData (done) {
       log('Starting Backup');
 
-      // TODO we skip all data if events are skipped - need more granularity
-      if (fs.existsSync(backupDirectory.eventsFile)) { // skip
+      // Skip on re-run if any events chunk file (or the legacy `events.json`)
+      // already exists. Granularity is "events present? skip the metadata
+      // resources too" — same behavior as pre-chunked versions.
+      if (backupDirectory.hasEventsData()) { // skip
         return done();
       }
 
-      let eventsRequest = 'events?fromTime=-2350373077&toTime=2350373077';
       let streamsRequest = 'streams';
-      let auditLogsRequest = 'audit/logs?fromTime=-2350373077&toTime=2350373077';
+      const auditLogsRequest = 'audit/logs?fromTime=-2350373077&toTime=2350373077';
       if (params.includeTrashed) {
-        eventsRequest += '&state=all';
         streamsRequest += '?state=all';
       }
 
       // 'followed-slices' is v1-only (returns 404 in v2) — not fetched.
-      // 'audit/logs' is fetched alongside the rest as a JSON file.
-      async.mapSeries(['account', streamsRequest, 'accesses',
+      // Events are fetched separately as monthly chunks (see fetchEventsChunked
+      // below); audit/logs is still a single resource.
+      //
+      // `accesses` is fetched twice: once as the current-snapshot
+      // `accesses.json` (back-compat, unchanged shape), once with
+      // `includeDeletions=true&includeExpired=true` as `accesses-all.json`
+      // so the dump carries the full disclosure-history view (revoked +
+      // expired tokens) needed for consent-state-at-time-of-access
+      // provenance.
+      const accessesAllRequest = 'accesses?includeDeletions=true&includeExpired=true';
+      async.mapSeries(['account', streamsRequest, 'accesses', accessesAllRequest,
         'profile/private', 'profile/public',
-        eventsRequest, auditLogsRequest]
+        auditLogsRequest]
         ,
         function (resource, callback) {
+          // Force `accesses-all.json` for the deletions+expired variant so it
+          // doesn't collide with the bare `accesses.json` filename derived
+          // from the resource string.
+          const extra = resource === accessesAllRequest ? '-all' : '';
           apiResources.toJSONFile({
             folder: backupDirectory.baseDir,
             resource: resource,
+            extraFileName: extra,
             connection: connection
           }, callback, log)
         }, done);
+    },
+    function fetchEventsChunked (stepDone) {
+      eventsChunked.download(connection, backupDirectory, {
+        includeTrashed: params.includeTrashed,
+        fromTime: params.fromTime,
+        toTime: params.toTime,
+        chunkMonths: params.eventsChunkMonths
+      }, stepDone, log);
     },
     function fetchAppProfiles (stepDone) {
       const accessesData = JSON.parse(fs.readFileSync(backupDirectory.accessesFile, 'utf8'));
@@ -100,6 +124,14 @@ function startOnConnection (connection, params, callback, log) {
           connection: { endpoint: connection.endpoint, token: access.token }
         }, callback, log);
       }, stepDone);
+    },
+    function fetchAccessHistory (stepDone) {
+      // O(N) in the access count — opt-in via params.includeAccessHistory.
+      if (!params.includeAccessHistory) {
+        log('Skipping per-access version history (opt-in)');
+        return stepDone();
+      }
+      accessesHistory.download(connection, backupDirectory, stepDone, log);
     },
     function fetchAttachments (stepDone) {
       if (params.includeAttachments) {
