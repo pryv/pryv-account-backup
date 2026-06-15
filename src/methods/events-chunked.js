@@ -6,32 +6,62 @@ const FAR_FUTURE = 2350373077;
 const SECONDS_PER_DAY = 86400;
 
 /**
- * Fetch events split into monthly time-range chunks instead of a single
- * unbounded request. For a subject with multi-GB event history, a single
- * `events?fromTime=…&toTime=…` round-trip times out at the API gateway or
- * OOMs the caller; one file per UTC month keeps each round-trip bounded.
+ * Fetch events in one of two modes depending on `options.modifiedSince`:
  *
- * Output files: `events-YYYY-MM.json` (one per non-empty month in the
- * discovered range). Each file carries the standard API response shape
- * `{ events: [...], meta: {...} }` — readable with the same JSON tooling as
- * the rest of the dump and individually hashable by the integrity manifest.
+ *   - INITIAL run (no prior state, no `modifiedSince`): chunked time-range
+ *     fetch. Probe the subject's discovered event-time range with two
+ *     `limit=1` calls, slice into UTC-month windows, write one
+ *     `events-YYYY-MM.json` per window. For multi-GB subjects this avoids
+ *     timing out the single round-trip + OOMing the caller. Preserved from
+ *     v0.5.0.
+ *
+ *   - INCREMENTAL run (`options.modifiedSince` provided): single
+ *     `events?modifiedSince=T&includeDeletions=true` round-trip writes
+ *     `events-incremental-<RUN-TS>.json`. Only events with
+ *     `modified > T` flow over the wire — minimum bytes; deletions are
+ *     included so deletion-aware restore consumers can reconstruct.
+ *
+ * Both modes carry the standard `{ events: [...], meta: {...} }` response
+ * shape and are individually hashable by the integrity manifest.
  *
  * @param connection { endpoint, token }
  * @param backupDirectory BackupDirectory instance (provides baseDir)
  * @param options
- *        options.includeTrashed {boolean}  appends `&state=all`
- *        options.fromTime {number}         optional override (seconds since epoch)
- *        options.toTime {number}           optional override (seconds since epoch)
- *        options.chunkMonths {number}      default 1 (months per chunk)
+ *        options.includeTrashed {boolean}    appends `&state=all`
+ *        options.modifiedSince  {number}     when present, switches to
+ *                                            incremental mode
+ *        options.runStartedAt   {number}     incremental run timestamp; used
+ *                                            in the output filename
+ *                                            (defaults to current epoch)
+ *        options.fromTime {number}           initial-mode override
+ *        options.toTime   {number}           initial-mode override
+ *        options.chunkMonths {number}        initial-mode chunk size (default 1)
  * @param callback (err)
  * @param log (msg)
  */
 exports.download = function download (connection, backupDirectory, options, callback, log) {
   if (!log) log = console.log;
   options = options || {};
-  const chunkMonths = options.chunkMonths || 1;
   const stateAll = options.includeTrashed ? '&state=all' : '';
 
+  // Incremental mode: single round-trip with modifiedSince.
+  if (options.modifiedSince != null) {
+    const runTs = options.runStartedAt || Math.floor(Date.now() / 1000);
+    const resource = 'events?modifiedSince=' + options.modifiedSince +
+      '&includeDeletions=true' + stateAll;
+    log('Events incremental: modifiedSince=' + options.modifiedSince +
+      ' (' + new Date(options.modifiedSince * 1000).toISOString() + ')');
+    apiResources.toJSONFile({
+      folder: backupDirectory.baseDir,
+      resource: resource,
+      connection: connection,
+      filename: 'events-incremental-' + runTs + '.json'
+    }, callback, log);
+    return;
+  }
+
+  // Initial mode: probe + chunked time-range.
+  const chunkMonths = options.chunkMonths || 1;
   probeRange(connection, stateAll, options, log, function (probeErr, range) {
     if (probeErr) return callback(probeErr);
     if (range == null) {

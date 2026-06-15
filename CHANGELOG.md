@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.6.0 — UNRELEASED — Library + CLI split, incremental backup via `modifiedSince`, audit-as-events
+
+Architectural rewrite around a programmatic library API (`require('@pryv/account-backup').Backup`) consuming pluggable adapters (`StorageWriter` + `StateStore`). The CLI is preserved as a thin shim; behavior is byte-identical to 0.5.0 on a first run against a fresh backup directory. A sibling `pryv-account-backup-webapp` repository ships the browser-side adapter pair + sample UI.
+
+### Added
+
+- **`Backup` class + adapter interfaces** — new `src/lib/` package exporting `Backup`, `StorageWriter`, `StateStore`, `NodeFsStorageWriter`, `FolderStateStore`. The CLI now constructs these adapters internally; the public `require('@pryv/account-backup').start(params, cb)` callback API is unchanged.
+- **Incremental backup via `events.get?modifiedSince=T`** — when a `FolderStateStore` (or any `StateStore`) reports a `lastRunAt` from a prior successful run, the events fetch switches to a single incremental round-trip producing `events-incremental-<RUN-TS>.json` instead of the monthly chunked fetch. Deletions are included via `includeDeletions=true`. First-run behavior (chunked monthly `events-YYYY-MM.json`) is preserved.
+- **Audit fetched via the standard events API on `:_audit:*` streams** — audit is registered as a regular `@pryv/datastore` on every Pryv core; querying `events.get?streams=[':_audit:accesses',':_audit:actions']&modifiedSince=T` reaches the same data the dedicated `audit.getLogs` endpoint serves, but with `modifiedSince` support for free. The output filename `audit_logs.json` is preserved so any consumer that keyed on it continues to work.
+- **State persistence** — successful runs write `lastRunAt`, `events.lastModifiedSince`, `audit.lastModifiedSince`, plus tool + format version to a `.state.json` sentinel in the backup directory. Used to drive the next run's incremental thresholds.
+- **Adapter contract tests `[PAAB]`** + **incremental + audit-as-events tests `[PAIB]` / `[PAAU]`** — 33 new unit tests run without credentials.
+
+### Fixed
+
+- **HFS series data points missing from chunked-events backups** — `hf-data.js` inspected only the legacy `events.json` to discover `series:*` events; on a 0.5.0 backup (which writes chunked `events-YYYY-MM.json` instead), every series-event was silently skipped and the bundle produced zero data points despite the v0.3.0+ design saying it should carry them. Now iterates `BackupDirectory.listEventFiles()` so legacy and chunked file layouts both work. Regression test `[PAHF]` added.
+
+### Changed
+
+- **`scripts/start-backup.js`** unchanged — the CLI prompts and flow are identical to 0.5.0 from an operator's perspective. The orchestration delegates to the new `Backup` class internally.
+- **`audit/logs?fromTime=…&toTime=…` dropped** from the metadata-fetch list — replaced by audit-as-events (see above). No behavior change on the output side; the audit_logs.json content is shape-compatible.
+
+### Compatibility
+
+- A 0.5.0 backup directory restored against a 0.6.0+ CLI works: the orchestrator detects the missing `.state.json` and falls back to the initial chunked-fetch path. Re-running on top of a 0.5.0 backup directory adds the state file and switches to incremental on subsequent runs.
+- The audit_logs.json filename + content shape are preserved; downstream consumers that keyed on the v0.4.0/0.5.0 file layout do not need to change.
+- The CLI's `require('@pryv/account-backup').start(params, callback)` API is preserved verbatim.
+
+### Known gaps still open after this release
+
+- Same as 0.5.0 — jurisdiction-per-host inference for CMC counterparties is implementer-side; the backup bundle carries `profile.mfa.recoveryCodes` and must be treated as a password-reset-equivalent secret.
+
 ## 0.5.0 — 2026-06-13 — Chunked events + access-history completeness (DSAR)
 
 Three DSAR-completeness items in a single release:
