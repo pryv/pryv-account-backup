@@ -48,33 +48,77 @@ Finally, a **per-file integrity manifest** is written to `manifest.json` — sha
 
 The operation might take a while in case the data size is substantial. Please, leave requests [here](https://github.com/pryv/pryv-account-backup/issues)
 
-## As a package
+## Use as a library
 
-It is also possible use the backup function in your code.
+`@pryv/account-backup` is consumable as a programmatic library in addition to the CLI. The sample webapp [`pryv-account-backup-webapp`](https://github.com/pryv/pryv-account-backup-webapp) uses this surface; custom tools (migration scripts, Pryv-to-Pryv transfer flows, integration tests) can do the same.
 
-Add the following to your `package.json`: `"pryv-backup":"git+ssh://git@github.com:pryv/pryv-account-backup.git"`
+The package is git-clone-distributed — **not on the npm registry**. Pin to a tag via:
 
-then use it as following:
+```json
+{
+  "dependencies": {
+    "pryv-account-backup": "github:pryv/pryv-account-backup#v0.6.0"
+  }
+}
+```
+
+### Two API surfaces
+
+**Legacy callback API** (preserved through every release; what the CLI uses internally):
 
 ```javascript
-const backup = require('pryv-backup');
+const backup = require('pryv-account-backup');
 
-const settings = {
-      service: SERVICE_INFO_URL,
-      username: USERNAME  
-      password: PASSWORD,  
-      includeTrashed: true, // default: false  
-      includeAttachments: true // default: false
-    };  
-settings.backupDirectory = new backup.Directory(apiEndPoint);  
-
-backup.start(settings, function (err) {
-      if (err) {
-        // manage error
-      }
-      // ...
+backup.start({
+  service: SERVICE_INFO_URL,
+  username: USERNAME,
+  password: PASSWORD,
+  includeTrashed: true,                  // default false
+  includeAttachments: true,              // default false
+  includeAccessHistory: false,           // opt-in (O(N) calls)
+  eventsChunkMonths: 1,                  // initial chunked-fetch granularity
+  backupDirectory: new backup.Directory(API_ENDPOINT)
+}, (err) => {
+  // ...
 });
 ```
+
+**Class-based API** (v0.6.0+, the entry point library consumers should prefer):
+
+```javascript
+const {
+  Backup,
+  NodeFsStorageWriter,
+  FolderStateStore
+} = require('pryv-account-backup');
+
+const writer = new NodeFsStorageWriter(backupDirectory);
+const state  = new FolderStateStore(backupDirectory.baseDir);
+const backup = new Backup({
+  connection,       // a pryv.Connection (logged-in via Service.login)
+  writer,
+  state,
+  options: { includeTrashed: true, includeAttachments: true, eventsChunkMonths: 1 }
+});
+
+backup.run((err) => {
+  // ...
+});
+```
+
+The class form decouples **what the backup does** (orchestration) from **where the output lands** (`StorageWriter` adapter) and **how incremental state is tracked** (`StateStore` adapter). Custom adapters let library consumers target alternative outputs — the sample webapp swaps `NodeFsStorageWriter` for a browser-side `BrowserBlobZipStorageWriter` and `FolderStateStore` for `LocalStorageStateStore`.
+
+### Incremental backup
+
+On the second and subsequent runs against the same backup directory, the orchestrator reads `.state.json` (written at the end of every successful run), fetches events + audit-log entries via `events.get?modifiedSince=T&includeDeletions=true`, and writes a single `events-incremental-<TS>.json` (rather than re-chunking the full history). Small resources (`account`, `streams`, `accesses`, `profile`, `webhooks`) are still full-re-fetched — they're tiny.
+
+### Audit log via the standard events API
+
+Since v0.6.0 the audit log is fetched via `events.get?streams=[":_audit:accesses",":_audit:actions"]&modifiedSince=T` — the same datastore the dedicated `audit.getLogs` endpoint used internally. Output filename `audit_logs.json` is preserved. The dedicated `/audit/logs` route was removed from open-pryv.io on 2026-06-15; **v0.6.0 is the minimum required version** for current open-pryv.io deployments (v0.5.0 and earlier produce empty `audit_logs.json` files).
+
+### Restore
+
+Restore is **CLI-only** + marked experimental — `audit`, `webhooks`, and `accesses` are deliberately not replayed on the target (system-generated or token-bearing). The library does not expose `Restore` programmatically; use `npm run restore <path>` from the CLI or read `src/restore.js` for the orchestration shape.
 
 ## (Experimental) Restore Streams and Events to another account
 
