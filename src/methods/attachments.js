@@ -65,8 +65,22 @@ function loadStreamMapIfNeed(backupDir, log) {
 }
 
 function loadEventFile(connection, backupDir, callback, log) {
+  // Walk every event-data file the backup carries — legacy single-file
+  // `events.json` (older backups) and chunked `events-YYYY-MM.json` (0.5.0+)
+  // and incremental `events-incremental-<TS>.json` (0.6.0+). Prior to this
+  // fix, only the legacy file was streamed; chunked-only backups crashed
+  // immediately with `ENOENT events.json` when `--includeAttachments` was
+  // on — the same regression pattern as the 0.6.0 hf-data fix.
+  const eventFiles = (typeof backupDir.listEventFiles === 'function')
+    ? backupDir.listEventFiles()
+    : (fs.existsSync(backupDir.eventsFile) ? [backupDir.eventsFile] : []);
+  if (eventFiles.length === 0) {
+    log('attachments: skipping (no events-*.json files — events fetch must run first)');
+    return callback(null, []);
+  }
+
   const attachments = [];
-  log('Parsing events for attachments');
+  log('Parsing events for attachments across ' + eventFiles.length + ' file(s)');
 
   // --- pretty timed log ---//
   const timeRepeat = 1000;
@@ -79,29 +93,35 @@ function loadEventFile(connection, backupDir, callback, log) {
   }
   setTimeout(timeLog, timeRepeat);
 
-  fs.createReadStream(backupDir.eventsFile, 'utf8').pipe(
-    JSONStream.parse('events.*').on('data', function(event) {
-      total++;
-      if (event.attachments) {
-        event.attachments.forEach(function (att) {
-          if (att.id) {
-            att.eventId = event.id;
-            att.streamId = event.streamId;
-            attachments.push(att);
-          } else {
-            log('Invalid event: att.id is missing: ' + event);
-          }
-        });
-      }
-  }).on('error', function(error) {
-      done = true;
-      log('Error while fetching attachments: ' + error)
-      callback(error, attachments);
-    }).on('end', function() {
+  function streamOne (i) {
+    if (i >= eventFiles.length) {
       done = true;
       log('Found ' + attachments.length + ' attachments');
-      callback(null, attachments);
-    }));
+      return callback(null, attachments);
+    }
+    fs.createReadStream(eventFiles[i], 'utf8').pipe(
+      JSONStream.parse('events.*').on('data', function(event) {
+        total++;
+        if (event.attachments) {
+          event.attachments.forEach(function (att) {
+            if (att.id) {
+              att.eventId = event.id;
+              att.streamId = event.streamId;
+              attachments.push(att);
+            } else {
+              log('Invalid event: att.id is missing: ' + event);
+            }
+          });
+        }
+      }).on('error', function(error) {
+        done = true;
+        log('Error while fetching attachments: ' + error);
+        callback(error, attachments);
+      }).on('end', function() {
+        streamOne(i + 1);
+      }));
+  }
+  streamOne(0);
 }
 
 

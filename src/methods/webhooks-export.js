@@ -83,14 +83,18 @@ function writeOutput (backupDir, accessesScanned, webhooks, log, callback) {
 }
 
 function fetchWebhooksForAccess (apiUrl, access, log, callback) {
+  // Pick http or https based on the apiEndpoint scheme — required for
+  // dev / lab deployments that run HTTP-only (the QuickStart on mbp2,
+  // CI fixtures, etc.). Production always uses https.
+  const transport = apiUrl.protocol === 'http:' ? require('http') : https;
   const options = {
     host: apiUrl.hostname,
-    port: apiUrl.port || 443,
+    port: apiUrl.port || (apiUrl.protocol === 'http:' ? 80 : 443),
     path: apiUrl.pathname + 'webhooks',
     headers: { Authorization: access.token }
   };
   const chunks = [];
-  https.get(options, function (res) {
+  transport.get(options, function (res) {
     if (res.statusCode === 401 || res.statusCode === 403) {
       // Expected for expired tokens — skip silently.
       log('webhooks-export: access ' + access.id + ' rejected (HTTP ' + res.statusCode + '), skipping');
