@@ -1,16 +1,19 @@
 # Changelog
 
-## 0.6.0 — UNRELEASED — Library + CLI split, incremental backup via `modifiedSince`, audit-as-events
+## 0.6.0 — UNRELEASED — Library + CLI split, incremental backup, audit-as-events, browser-isomorphic core
 
-Architectural rewrite around a programmatic library API (`require('@pryv/account-backup').Backup`) consuming pluggable adapters (`StorageWriter` + `StateStore`). The CLI is preserved as a thin shim; behavior is byte-identical to 0.5.0 on a first run against a fresh backup directory. A sibling `pryv-account-backup-webapp` repository ships the browser-side adapter pair + sample UI.
+Architectural rewrite around a programmatic library API (`require('@pryv/account-backup').Backup`) consuming pluggable adapters (`StorageWriter` + `StateStore`). The core resource-fetch modules are browser-isomorphic — `fetch` for HTTP, `StorageWriter.openWriteStream` for output. The CLI is preserved as a thin shim; behavior is byte-identical to 0.5.0 on a first run against a fresh backup directory. A sibling `pryv-account-backup-webapp` repository ships the browser-side adapter pair + sample UI.
+
+**Upstream context driving v0.6.0:** the dedicated `/audit/logs` endpoint is being removed from open-pryv.io. v0.5.0 calls this endpoint and will fail once the removal lands. v0.6.0 fetches audit via `events.get?streams=[':_audit:accesses',':_audit:actions']` instead — audit is a regular `@pryv/datastore` mounted at `:_audit:*` on every Pryv core. This route is forward-compatible with the removal AND supports `modifiedSince`, which the dedicated endpoint does not.
 
 ### Added
 
 - **`Backup` class + adapter interfaces** — new `src/lib/` package exporting `Backup`, `StorageWriter`, `StateStore`, `NodeFsStorageWriter`, `FolderStateStore`. The CLI now constructs these adapters internally; the public `require('@pryv/account-backup').start(params, cb)` callback API is unchanged.
+- **Browser-isomorphic resource fetchers** — `api-resources`, `events-chunked`, `audit-as-events`, `accesses-history` now use global `fetch` (Node 18+ / every modern browser) for HTTP and `StorageWriter.openWriteStream` for output, with **zero** Node-only imports reaching the runtime path. esbuild bundles all four modules for the browser in ~12 KB. The Node-only resource fetchers (`attachments`, `hf-data`, `webhooks-export`, `manifest`) stay CLI-only — the v0.6.0 webapp sample does not expose attachments / HFS / webhooks fetches.
 - **Incremental backup via `events.get?modifiedSince=T`** — when a `FolderStateStore` (or any `StateStore`) reports a `lastRunAt` from a prior successful run, the events fetch switches to a single incremental round-trip producing `events-incremental-<RUN-TS>.json` instead of the monthly chunked fetch. Deletions are included via `includeDeletions=true`. First-run behavior (chunked monthly `events-YYYY-MM.json`) is preserved.
 - **Audit fetched via the standard events API on `:_audit:*` streams** — audit is registered as a regular `@pryv/datastore` on every Pryv core; querying `events.get?streams=[':_audit:accesses',':_audit:actions']&modifiedSince=T` reaches the same data the dedicated `audit.getLogs` endpoint serves, but with `modifiedSince` support for free. The output filename `audit_logs.json` is preserved so any consumer that keyed on it continues to work.
 - **State persistence** — successful runs write `lastRunAt`, `events.lastModifiedSince`, `audit.lastModifiedSince`, plus tool + format version to a `.state.json` sentinel in the backup directory. Used to drive the next run's incremental thresholds.
-- **Adapter contract tests `[PAAB]`** + **incremental + audit-as-events tests `[PAIB]` / `[PAAU]`** — 33 new unit tests run without credentials.
+- **Adapter contract tests `[PAAB]`** + **incremental + audit-as-events tests `[PAIB]` / `[PAAU]`** + **isomorphism contract tests `[PALI]`** + **hf-data regression test `[PAHF]`** — 43 new unit tests run without credentials.
 
 ### Fixed
 
@@ -20,6 +23,7 @@ Architectural rewrite around a programmatic library API (`require('@pryv/account
 
 - **`scripts/start-backup.js`** unchanged — the CLI prompts and flow are identical to 0.5.0 from an operator's perspective. The orchestration delegates to the new `Backup` class internally.
 - **`audit/logs?fromTime=…&toTime=…` dropped** from the metadata-fetch list — replaced by audit-as-events (see above). No behavior change on the output side; the audit_logs.json content is shape-compatible.
+- **`https.get` / `fs.createWriteStream` removed from isomorphic modules** — replaced by global `fetch` + `StorageWriter.openWriteStream`. `Backup.run` constructs a `NodeFsStorageWriter` from the legacy `BackupDirectory` once and passes the writer to every per-method module; per-method modules no longer accept a `folder` shortcut.
 
 ### Compatibility
 

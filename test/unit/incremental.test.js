@@ -47,12 +47,16 @@ describe('[PAIB] events-chunked incremental mode', function () {
   });
 
   const fakeConn = { endpoint: 'https://token@host.example.com/', token: 'token' };
-  const fakeDir = { baseDir: '/tmp/fake/' };
+  const fakeWriter = {
+    openWriteStream: () => ({ write: () => {}, end: (cb) => cb && cb() }),
+    exists: () => false,
+    describeTarget: () => '/mock/'
+  };
 
   it('falls back to chunked initial-mode when modifiedSince is null', function (done) {
     // Use a tiny synthetic range via fromTime/toTime overrides to skip
     // the API probe.
-    eventsChunked.download(fakeConn, fakeDir, {
+    eventsChunked.download(fakeConn, fakeWriter, {
       fromTime: Date.UTC(2024, 0, 1) / 1000,
       toTime: Date.UTC(2024, 0, 31) / 1000
     }, function (err) {
@@ -65,7 +69,7 @@ describe('[PAIB] events-chunked incremental mode', function () {
   });
 
   it('switches to a single incremental request when modifiedSince is provided', function (done) {
-    eventsChunked.download(fakeConn, fakeDir, {
+    eventsChunked.download(fakeConn, fakeWriter, {
       modifiedSince: 1700000000,
       runStartedAt: 1700100000
     }, function (err) {
@@ -78,7 +82,7 @@ describe('[PAIB] events-chunked incremental mode', function () {
   });
 
   it('appends &state=all in incremental mode when includeTrashed is set', function (done) {
-    eventsChunked.download(fakeConn, fakeDir, {
+    eventsChunked.download(fakeConn, fakeWriter, {
       modifiedSince: 1700000000,
       runStartedAt: 1700100000,
       includeTrashed: true
@@ -121,10 +125,14 @@ describe('[PAAU] audit-as-events query construction', function () {
   });
 
   const fakeConn = { endpoint: 'https://token@host.example.com/', token: 'token' };
-  const fakeDir = { baseDir: '/tmp/fake/' };
+  const fakeWriter = {
+    openWriteStream: () => ({ write: () => {}, end: (cb) => cb && cb() }),
+    exists: () => false,
+    describeTarget: () => '/mock/'
+  };
 
   it('queries both :_audit:* top-level streams', function (done) {
-    auditAsEvents.download(fakeConn, fakeDir, {}, function (err) {
+    auditAsEvents.download(fakeConn, fakeWriter, {}, function (err) {
       should.not.exist(err);
       captured.length.should.equal(1);
       const decoded = decodeURIComponent(captured[0].resource.match(/streams=([^&]+)/)[1]);
@@ -134,7 +142,7 @@ describe('[PAAU] audit-as-events query construction', function () {
   });
 
   it('writes to audit_logs.json (preserving the v0.5.0 filename)', function (done) {
-    auditAsEvents.download(fakeConn, fakeDir, {}, function (err) {
+    auditAsEvents.download(fakeConn, fakeWriter, {}, function (err) {
       should.not.exist(err);
       captured[0].filename.should.equal('audit_logs.json');
       done();
@@ -142,7 +150,7 @@ describe('[PAAU] audit-as-events query construction', function () {
   });
 
   it('omits modifiedSince on initial run (no prior state)', function (done) {
-    auditAsEvents.download(fakeConn, fakeDir, {}, function (err) {
+    auditAsEvents.download(fakeConn, fakeWriter, {}, function (err) {
       should.not.exist(err);
       captured[0].resource.should.not.match(/modifiedSince/);
       done();
@@ -150,7 +158,7 @@ describe('[PAAU] audit-as-events query construction', function () {
   });
 
   it('appends modifiedSince when provided (incremental run)', function (done) {
-    auditAsEvents.download(fakeConn, fakeDir, { modifiedSince: 1700000000 }, function (err) {
+    auditAsEvents.download(fakeConn, fakeWriter, { modifiedSince: 1700000000 }, function (err) {
       should.not.exist(err);
       captured[0].resource.should.match(/modifiedSince=1700000000/);
       done();
@@ -158,7 +166,7 @@ describe('[PAAU] audit-as-events query construction', function () {
   });
 
   it('always sets includeDeletions=true for the incremental delta', function (done) {
-    auditAsEvents.download(fakeConn, fakeDir, {}, function (err) {
+    auditAsEvents.download(fakeConn, fakeWriter, {}, function (err) {
       should.not.exist(err);
       captured[0].resource.should.match(/includeDeletions=true/);
       done();
