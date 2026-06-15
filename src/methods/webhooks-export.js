@@ -1,16 +1,25 @@
-const fs = require('fs');
-const https = require('https');
 const async = require('async');
 
+const CATEGORY = 'webhook';
+
 /**
- * For every access in `accesses.json`, call `GET /webhooks` with that access's
- * token and aggregate the result into `<backupDir>/webhooks.json` keyed by
- * accessId.
+ * For every access ref queued in the StateStore under the `webhook` category,
+ * call `GET /webhooks` with that access's token and aggregate the result into
+ * `<baseDir>/webhooks.json` keyed by accessId.
  *
- * Earlier backup versions never fetched webhooks at all, so the DSAR dump
+ * Earlier backup versions never fetched webhooks at all, so the disclosure
  * was missing every webhook the subject had configured. Per-access fetch
  * matches the API's permissions model (each access only sees its own
  * webhooks; the personal access sees all).
+ *
+ * Browser-isomorphic since v0.7.0:
+ *   - HTTP: global `fetch` (uniform handling of http vs https),
+ *   - disk: `writer.openWriteStream('webhooks.json')`,
+ *   - work queue: `stateStore.listPending('webhook')` populated by the
+ *     orchestrator from the accesses payload via the `onParsed` hook.
+ *
+ * Ref schema (pushed by the orchestrator):
+ *   { key: '<accessId>', accessId, token, type }
  *
  * Output shape:
  *   {
@@ -19,106 +28,103 @@ const async = require('async');
  *     "webhooks": [ { ...webhook, accessId } ]
  *   }
  *
- * @param {object} connection { endpoint, token } (only used to derive the
- *   API host — the per-access token is what authenticates each request).
- * @param {object} backupDir BackupDirectory instance
+ * @param {object} connection { endpoint, token }
+ * @param {object} writer StorageWriter
+ * @param {object} stateStore StateStore (drains category 'webhook')
+ * @param {object} options { concurrency?: number } default 4
  * @param {function} callback (err)
  * @param {function} [log] optional log function
  */
-exports.download = function (connection, backupDir, callback, log) {
+exports.download = function download (connection, writer, stateStore, options, callback, log) {
   if (!log) log = console.log;
-  const accessesFile = backupDir.accessesFile;
-  if (!fs.existsSync(accessesFile)) {
-    log('webhooks-export: skipping (no accesses.json — accesses fetch must run first)');
-    return callback();
+  if (writer == null || typeof writer.openWriteStream !== 'function') {
+    throw new Error('webhooks-export.download requires a StorageWriter');
   }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(fs.readFileSync(accessesFile, 'utf8'));
-  } catch (err) {
-    return callback(err);
+  if (stateStore == null || typeof stateStore.listPending !== 'function') {
+    throw new Error('webhooks-export.download requires a StateStore');
   }
-  const accesses = Array.isArray(parsed.accesses) ? parsed.accesses : [];
-  // We only call /webhooks on accesses that actually carry a usable token.
-  const scannable = accesses.filter(function (a) {
-    return typeof a.token === 'string' && a.token.length > 0;
-  });
+  options = options || {};
+  const concurrency = options.concurrency || 4;
 
-  if (scannable.length === 0) {
-    log('webhooks-export: no scannable accesses, skipping');
-    return writeOutput(backupDir, scannable.length, [], log, callback);
-  }
+  (async function () {
+    const refs = await stateStore.listPending(CATEGORY);
+    if (refs.length === 0) {
+      log('webhooks-export: no scannable accesses, writing empty bundle');
+      return [];
+    }
+    log('webhooks-export: scanning ' + refs.length + ' access(es)');
+    return refs;
+  })().then(function (refs) {
+    const apiUrl = new URL(connection.endpoint);
+    const collected = [];
 
-  log('webhooks-export: scanning ' + scannable.length + ' access(es)');
-  const apiUrl = new URL(connection.endpoint);
-  const collected = [];
-
-  async.mapLimit(scannable, 4, function (access, done) {
-    fetchWebhooksForAccess(apiUrl, access, log, function (err, list) {
-      if (err) return done(err);
-      list.forEach(function (w) {
-        w.accessId = access.id;
-        collected.push(w);
+    async.mapLimit(refs, concurrency, function (ref, done) {
+      fetchWebhooksForAccess(apiUrl, ref, log, function (err, list) {
+        if (err) return done(err);
+        list.forEach(function (w) {
+          w.accessId = ref.accessId;
+          collected.push(w);
+        });
+        stateStore.markDone(CATEGORY, ref.key).then(function () { done(); }, done);
       });
-      done();
+    }, function (err) {
+      if (err) return callback(err);
+      writeOutput(writer, refs.length, collected, log, callback);
     });
-  }, function (err) {
-    if (err) return callback(err);
-    writeOutput(backupDir, scannable.length, collected, log, callback);
-  });
+  }, callback);
 };
 
-function writeOutput (backupDir, accessesScanned, webhooks, log, callback) {
+function writeOutput (writer, accessesScanned, webhooks, log, callback) {
   const out = {
     generated_at: new Date().toISOString(),
     accesses_scanned: accessesScanned,
-    webhooks
+    webhooks: webhooks
   };
-  fs.writeFile(backupDir.webhooksFile, JSON.stringify(out, null, 2), 'utf8', function (err) {
-    if (err) return callback(err);
-    log('webhooks-export: wrote ' + webhooks.length + ' webhook(s) to ' + backupDir.webhooksFile);
+  const writeStream = writer.openWriteStream('webhooks.json');
+  writeStream.write(JSON.stringify(out, null, 2));
+  if (typeof writeStream.end === 'function') {
+    writeStream.end(function (err) {
+      if (err) return callback(err);
+      log('webhooks-export: wrote ' + webhooks.length + ' webhook(s) to webhooks.json');
+      callback();
+    });
+  } else {
+    log('webhooks-export: wrote ' + webhooks.length + ' webhook(s) to webhooks.json');
     callback();
-  });
+  }
 }
 
-function fetchWebhooksForAccess (apiUrl, access, log, callback) {
-  // Pick http or https based on the apiEndpoint scheme — required for
-  // dev / lab deployments that run HTTP-only (the QuickStart on mbp2,
-  // CI fixtures, etc.). Production always uses https.
-  const transport = apiUrl.protocol === 'http:' ? require('http') : https;
-  const options = {
-    host: apiUrl.hostname,
-    port: apiUrl.port || (apiUrl.protocol === 'http:' ? 80 : 443),
-    path: apiUrl.pathname + 'webhooks',
-    headers: { Authorization: access.token }
-  };
-  const chunks = [];
-  transport.get(options, function (res) {
-    if (res.statusCode === 401 || res.statusCode === 403) {
-      // Expected for expired tokens — skip silently.
-      log('webhooks-export: access ' + access.id + ' rejected (HTTP ' + res.statusCode + '), skipping');
-      return callback(null, []);
-    }
-    if (res.statusCode !== 200) {
-      log('webhooks-export: access ' + access.id + ' returned HTTP ' + res.statusCode + ', skipping');
-      return callback(null, []);
-    }
-    res.setEncoding('utf8');
-    res.on('data', (c) => chunks.push(c));
-    res.on('end', function () {
-      let body;
-      try {
-        body = JSON.parse(chunks.join(''));
-      } catch (parseErr) {
-        log('webhooks-export: access ' + access.id + ' returned unparseable body, skipping');
-        return callback(null, []);
-      }
-      const list = Array.isArray(body.webhooks) ? body.webhooks : [];
-      callback(null, list);
+function fetchWebhooksForAccess (apiUrl, ref, log, callback) {
+  const base = apiUrl.protocol + '//' + apiUrl.host + apiUrl.pathname.replace(/\/$/, '');
+  const fullUrl = base + '/webhooks';
+  (async function () {
+    const res = await fetch(fullUrl, {
+      headers: { Authorization: ref.token }
     });
-  }).on('error', function (e) {
-    log('webhooks-export: access ' + access.id + ' transport error — ' + e.message);
-    callback(null, []); // non-fatal — keep going for the rest of accesses
-  });
+    if (res.status === 401 || res.status === 403) {
+      // Expected for expired tokens — skip silently.
+      log('webhooks-export: access ' + ref.accessId + ' rejected (HTTP ' + res.status + '), skipping');
+      return [];
+    }
+    if (res.status !== 200) {
+      log('webhooks-export: access ' + ref.accessId + ' returned HTTP ' + res.status + ', skipping');
+      return [];
+    }
+    let body;
+    try {
+      body = await res.json();
+    } catch (parseErr) {
+      log('webhooks-export: access ' + ref.accessId + ' returned unparseable body, skipping');
+      return [];
+    }
+    return Array.isArray(body.webhooks) ? body.webhooks : [];
+  })().then(
+    function (list) { callback(null, list); },
+    function (e) {
+      log('webhooks-export: access ' + ref.accessId + ' transport error — ' + (e.message || e));
+      callback(null, []); // non-fatal — keep going for the rest of accesses
+    }
+  );
 }
+
+exports.CATEGORY = CATEGORY;

@@ -140,7 +140,7 @@ describe('lib adapters', function () {
     });
 
     it('tolerates a corrupted sentinel file (treats as empty)', async function () {
-      const stateFile = path.join(tmpDir, '.state.json');
+      const stateFile = path.join(tmpDir, '.sync-state.json');
       fs.writeFileSync(stateFile, '{not valid json');
       const s = new FolderStateStore(tmpDir);
       const all = await s.getAll();
@@ -153,6 +153,150 @@ describe('lib adapters', function () {
       const all = await s.getAll();
       all.k = 999;
       (await s.get('k')).should.equal(1);
+    });
+
+    it('migrates from the pre-v0.7.0 .state.json layout', async function () {
+      const migrateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fss-migrate-'));
+      try {
+        const legacy = path.join(migrateDir, '.state.json');
+        fs.writeFileSync(legacy, JSON.stringify({
+          lastRunAt: 1700000000,
+          'events.lastModifiedSince': 1699000000
+        }));
+        const s = new FolderStateStore(migrateDir);
+        (await s.get('lastRunAt')).should.equal(1700000000);
+        (await s.get('events.lastModifiedSince')).should.equal(1699000000);
+        // Next write lands in the new file.
+        await s.set('k', 'v');
+        fs.existsSync(path.join(migrateDir, '.sync-state.json')).should.equal(true);
+      } finally {
+        fs.rmSync(migrateDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('[PAAB] FolderStateStore ref tracking', function () {
+    let tmpDir;
+    beforeEach(function () {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fss-refs-'));
+    });
+    afterEach(function () {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('pushRef + listPending round-trips a ref payload', async function () {
+      const s = new FolderStateStore(tmpDir);
+      await s.pushRef('attachment', { key: 'e1:a1', eventId: 'e1', attId: 'a1', fileName: 'foo.bin' });
+      const pending = await s.listPending('attachment');
+      pending.length.should.equal(1);
+      pending[0].key.should.equal('e1:a1');
+      pending[0].fileName.should.equal('foo.bin');
+    });
+
+    it('pushRef is idempotent on key within a category', async function () {
+      const s = new FolderStateStore(tmpDir);
+      await s.pushRef('attachment', { key: 'e1:a1', fileName: 'foo.bin' });
+      await s.pushRef('attachment', { key: 'e1:a1', fileName: 'bar.bin' });
+      const pending = await s.listPending('attachment');
+      pending.length.should.equal(1);
+      pending[0].fileName.should.equal('foo.bin');
+    });
+
+    it('markDone removes the ref from listPending', async function () {
+      const s = new FolderStateStore(tmpDir);
+      await s.pushRef('attachment', { key: 'e1:a1' });
+      await s.pushRef('attachment', { key: 'e2:a2' });
+      await s.markDone('attachment', 'e1:a1');
+      const pending = await s.listPending('attachment');
+      pending.length.should.equal(1);
+      pending[0].key.should.equal('e2:a2');
+    });
+
+    it('clearCategory drops every ref under the category', async function () {
+      const s = new FolderStateStore(tmpDir);
+      await s.pushRef('attachment', { key: 'a' });
+      await s.pushRef('webhook', { key: 'b' });
+      await s.clearCategory('attachment');
+      (await s.listPending('attachment')).should.eql([]);
+      (await s.listPending('webhook')).length.should.equal(1);
+    });
+
+    it('refs survive across instances (persist + reload)', async function () {
+      const s1 = new FolderStateStore(tmpDir);
+      await s1.pushRef('attachment', { key: 'e1:a1', readToken: 'tok' });
+      const s2 = new FolderStateStore(tmpDir);
+      const pending = await s2.listPending('attachment');
+      pending[0].readToken.should.equal('tok');
+    });
+
+    it('pushRef requires ref.key', async function () {
+      const s = new FolderStateStore(tmpDir);
+      let threw = false;
+      try { await s.pushRef('attachment', { eventId: 'e1' }); } catch (e) { threw = /ref\.key/.test(e.message); }
+      threw.should.equal(true);
+    });
+  });
+
+  describe('[PAAB] FolderStateStore export / import', function () {
+    let tmpDir;
+    beforeEach(function () {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fss-export-'));
+    });
+    afterEach(function () {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('export() returns the schema envelope + kv state (refs dropped)', async function () {
+      const s = new FolderStateStore(tmpDir);
+      await s.set('lastRunAt', 1700000000);
+      await s.set('toolVersion', '0.7.0');
+      await s.pushRef('attachment', { key: 'e1:a1' });
+      const snapshot = await s.export();
+      snapshot.format.should.equal('pryv-account-backup-sync-state');
+      snapshot.formatVersion.should.equal(1);
+      snapshot.toolVersion.should.equal('0.7.0');
+      snapshot.kv.lastRunAt.should.equal(1700000000);
+      should(snapshot.refs).equal(undefined);
+    });
+
+    it('import() replaces kv state from a prior snapshot', async function () {
+      const s = new FolderStateStore(tmpDir);
+      await s.set('a', 1);
+      await s.import({
+        format: 'pryv-account-backup-sync-state',
+        formatVersion: 1,
+        kv: { b: 2 }
+      });
+      const all = await s.getAll();
+      all.should.eql({ b: 2 });
+    });
+
+    it('import() rejects an unrecognized format', async function () {
+      const s = new FolderStateStore(tmpDir);
+      let threw = false;
+      try { await s.import({ format: 'something-else', formatVersion: 1, kv: {} }); }
+      catch (e) { threw = /format/.test(e.message); }
+      threw.should.equal(true);
+    });
+
+    it('import() rejects an unsupported formatVersion', async function () {
+      const s = new FolderStateStore(tmpDir);
+      let threw = false;
+      try { await s.import({ format: 'pryv-account-backup-sync-state', formatVersion: 99, kv: {} }); }
+      catch (e) { threw = /formatVersion/.test(e.message); }
+      threw.should.equal(true);
+    });
+
+    it('import() does NOT replace refs (those are per-run)', async function () {
+      const s = new FolderStateStore(tmpDir);
+      await s.pushRef('attachment', { key: 'e1:a1' });
+      await s.import({
+        format: 'pryv-account-backup-sync-state',
+        formatVersion: 1,
+        kv: {}
+      });
+      const pending = await s.listPending('attachment');
+      pending.length.should.equal(1);
     });
   });
 

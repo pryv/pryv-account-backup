@@ -9,11 +9,21 @@
  * in `NodeFsStorageWriter` once (in `Backup.run`) and passes the writer to
  * this module — that keeps this file Node-free and browser-bundle-clean.
  *
+ * Optional `params.onParsed` hook (v0.7.0): when supplied, the response bytes
+ * are also accumulated in memory alongside writing, JSON-decoded at end-of-
+ * stream, and `onParsed(parsedDoc)` is fired before the callback. The
+ * orchestrator uses this to extract work refs (attachments, series-events,
+ * webhooks) from event/accesses payloads as they fetch, push them into the
+ * `StateStore`, then drain them in a later step. Memory cost: O(body size) —
+ * acceptable for chunked-events (<100 MB / file) + accesses payloads; do NOT
+ * enable for legacy multi-GB single-file events fetches.
+ *
  * @param params.writer       StorageWriter (required)
  * @param params.resource     Pryv API resource path, e.g. `events?modifiedSince=…`
  * @param params.connection   { endpoint, token }
  * @param params.extraFileName  optional suffix appended before `.json`
  * @param params.filename     optional full output filename (overrides derivation)
+ * @param params.onParsed     optional (parsedJsonDoc) => void; see above
  * @param callback (err)
  * @param log optional log fn
  */
@@ -42,6 +52,9 @@ exports.toJSONFile = function streamApiToFile (params, callback, log) {
   };
   setTimeout(timeLog, 1000);
 
+  const onParsed = typeof params.onParsed === 'function' ? params.onParsed : null;
+  const buffer = onParsed ? [] : null;
+
   (async function () {
     const res = await fetch(fullUrl, {
       headers: { Authorization: connection.token }
@@ -59,10 +72,24 @@ exports.toJSONFile = function streamApiToFile (params, callback, log) {
       if (streamDone) break;
       total += value.byteLength;
       writeStream.write(value);
+      if (buffer) buffer.push(value);
     }
     await endStream(writeStream);
     done = true;
     log('Received: ' + outputFilename + ' ' + prettyPrint(total));
+
+    if (onParsed) {
+      const merged = mergeChunks(buffer);
+      try {
+        const parsed = JSON.parse(new TextDecoder().decode(merged));
+        await onParsed(parsed);
+      } catch (parseErr) {
+        // Ref-collection failure is non-fatal — the file is already on disk;
+        // a later run can re-pick refs via modifiedSince.
+        log('onParsed: skipped (failed to decode ' + outputFilename +
+          ' — ' + (parseErr.message || parseErr) + ')');
+      }
+    }
   })().then(
     function () { callback(); },
     function (err) {
@@ -74,6 +101,15 @@ exports.toJSONFile = function streamApiToFile (params, callback, log) {
     }
   );
 };
+
+function mergeChunks (chunks) {
+  let total = 0;
+  for (const c of chunks) total += c.byteLength;
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.byteLength; }
+  return out;
+}
 
 function resolveWriter (params) {
   if (params.writer != null) return params.writer;

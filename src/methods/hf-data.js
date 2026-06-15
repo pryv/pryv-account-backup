@@ -1,112 +1,115 @@
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
 const async = require('async');
 
+const CATEGORY = 'series-event';
+
 /**
- * For every `series:*` event in `events.json`, fetch the data points via
+ * For every `series:*` event ref queued in the StateStore under the
+ * `series-event` category, fetch its data points via
  * `GET /events/<eventId>/series` and write them to
- * `<backupDir>/hf-data/<eventId>.json` (one file per series event).
+ * `hf-data/<eventId>.json` (one file per series event).
  *
  * Earlier backup versions downloaded the series event "container" but never
- * fetched the actual data points, so a GDPR Art.15 portable dump was missing
- * the bulk of the user's data on any HFS-using deployment.
+ * fetched the actual data points, so a portable dump was missing the bulk of
+ * the user's data on any HFS-using deployment.
  *
- * @param {object} connection { endpoint, token } (pryv lib connection shape)
- * @param {object} backupDir BackupDirectory instance
+ * Browser-isomorphic since v0.7.0:
+ *   - HTTP: global `fetch`,
+ *   - disk: `writer.openWriteStream('hf-data/<eid>.json')`,
+ *   - work queue: `stateStore.listPending('series-event')` populated by the
+ *     orchestrator from the events stream via the `onParsed` hook.
+ *
+ * Ref schema (pushed by the orchestrator):
+ *   { key: '<eventId>', eventId, type }
+ *
+ * @param {object} connection { endpoint, token }
+ * @param {object} writer StorageWriter
+ * @param {object} stateStore StateStore (drains category 'series-event')
+ * @param {object} options { concurrency?: number } default 4
  * @param {function} callback (err)
  * @param {function} [log] optional log function
  */
-exports.download = function (connection, backupDir, callback, log) {
+exports.download = function download (connection, writer, stateStore, options, callback, log) {
   if (!log) log = console.log;
-  // Walk every event-data file the backup carries — legacy single-file
-  // `events.json` (older backups) and chunked `events-YYYY-MM.json` (0.5.0+).
-  // Prior to this fix, only the legacy file was inspected; chunked-only
-  // backups silently skipped series-event discovery and produced an empty
-  // hf-data/ folder, dropping the bulk of HFS-using subjects' data from the
-  // Art.15 / Art.20 bundle.
-  const eventFiles = (typeof backupDir.listEventFiles === 'function')
-    ? backupDir.listEventFiles()
-    : (fs.existsSync(backupDir.eventsFile) ? [backupDir.eventsFile] : []);
-  if (eventFiles.length === 0) {
-    log('hf-data: skipping (no events-*.json files — events fetch must run first)');
-    return callback();
+  if (writer == null || typeof writer.openWriteStream !== 'function') {
+    throw new Error('hf-data.download requires a StorageWriter');
   }
+  if (stateStore == null || typeof stateStore.listPending !== 'function') {
+    throw new Error('hf-data.download requires a StateStore');
+  }
+  options = options || {};
+  const concurrency = options.concurrency || 4;
 
-  const seriesEvents = [];
-  for (const file of eventFiles) {
-    let parsed;
-    try {
-      parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-    } catch (err) {
-      return callback(err);
+  (async function () {
+    const refs = await stateStore.listPending(CATEGORY);
+    if (refs.length === 0) {
+      log('hf-data: no pending series events, skipping');
+      return [];
     }
-    const events = Array.isArray(parsed.events) ? parsed.events : [];
-    for (const e of events) {
-      if (typeof e.type === 'string' && e.type.indexOf('series:') === 0) {
-        seriesEvents.push(e);
-      }
-    }
-  }
-
-  if (seriesEvents.length === 0) {
-    log('hf-data: no series events found, skipping');
-    return callback();
-  }
-
-  log('hf-data: fetching data points for ' + seriesEvents.length + ' series event(s)');
-  // Native fs.mkdir({recursive:true}) replaces mkdirp (which went ESM-only in v3).
-  fs.promises.mkdir(backupDir.hfDataDir, { recursive: true }).then(function () {
-    async.mapLimit(seriesEvents, 4, function (event, done) {
-      fetchOneSeries(connection, event.id, backupDir.hfDataDir, log, done);
+    log('hf-data: fetching data points for ' + refs.length + ' series event(s)');
+    return refs;
+  })().then(function (refs) {
+    if (refs.length === 0) return callback();
+    async.mapLimit(refs, concurrency, function (ref, done) {
+      fetchOneSeries(connection, writer, stateStore, ref, log, done);
     }, function (err) {
       if (err) return callback(err);
       log('hf-data: done');
       callback();
     });
-  }).catch(callback);
+  }, callback);
 };
 
-function fetchOneSeries (connection, eventId, hfDataDir, log, callback) {
+function fetchOneSeries (connection, writer, stateStore, ref, log, callback) {
+  const eventId = ref.eventId;
   const url = new URL(connection.endpoint);
-  const resourcePath = url.pathname + 'events/' + eventId + '/series';
-  const options = {
-    host: url.hostname,
-    port: url.port || 443,
-    path: resourcePath,
-    headers: { Authorization: connection.token }
-  };
-  const outFile = path.join(hfDataDir, eventId + '.json');
-  const writeStream = fs.createWriteStream(outFile, { encoding: 'utf8' });
-  let total = 0;
-  let done = false;
+  const base = url.protocol + '//' + url.host + url.pathname.replace(/\/$/, '');
+  const fullUrl = base + '/events/' + encodeURIComponent(eventId) + '/series';
+  const relPath = 'hf-data/' + eventId + '.json';
 
-  https.get(options, function (res) {
-    if (res.statusCode !== 200) {
-      done = true;
-      writeStream.end();
-      // 404 / 400 on an empty series is non-fatal — just log and skip.
-      log('hf-data: skipping ' + eventId + ' (HTTP ' + res.statusCode + ')');
-      try { fs.unlinkSync(outFile); } catch (_e) { /* ignore */ }
-      return callback();
+  (async function () {
+    const res = await fetch(fullUrl, {
+      headers: { Authorization: connection.token }
+    });
+    if (res.status !== 200) {
+      // 404 / 400 on an empty series is non-fatal — log + mark done so the
+      // ref doesn't re-queue indefinitely on re-runs.
+      log('hf-data: skipping ' + eventId + ' (HTTP ' + res.status + ')');
+      await stateStore.markDone(CATEGORY, ref.key);
+      return;
     }
-    res.setEncoding('utf8');
-    res.on('data', function (chunk) {
-      total += chunk.length;
-      writeStream.write(chunk);
-    });
-    res.on('end', function () {
-      done = true;
-      writeStream.end(function () {
-        log('hf-data: ' + eventId + ' (' + total + ' bytes)');
-        callback();
+    const writeStream = writer.openWriteStream(relPath);
+    const reader = res.body.getReader();
+    let total = 0;
+    while (true) {
+      const { done: streamDone, value } = await reader.read();
+      if (streamDone) break;
+      total += value.byteLength;
+      writeStream.write(value);
+    }
+    await endStream(writeStream);
+    await stateStore.markDone(CATEGORY, ref.key);
+    log('hf-data: ' + eventId + ' (' + total + ' bytes)');
+  })().then(
+    function () { callback(); },
+    function (err) {
+      log('hf-data: error fetching ' + eventId + ' — ' + (err.message || err));
+      callback(err);
+    }
+  );
+}
+
+function endStream (writeStream) {
+  return new Promise(function (resolve, reject) {
+    if (typeof writeStream.end !== 'function') return resolve();
+    try {
+      writeStream.end(function (err) {
+        if (err) return reject(err);
+        resolve();
       });
-    });
-  }).on('error', function (e) {
-    if (done) return;
-    done = true;
-    writeStream.end();
-    log('hf-data: error fetching ' + eventId + ' — ' + e.message);
-    callback(e);
+    } catch (e) {
+      reject(e);
+    }
   });
 }
+
+exports.CATEGORY = CATEGORY;
