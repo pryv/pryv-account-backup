@@ -4,7 +4,7 @@
 
 Architectural rewrite around a programmatic library API (`require('@pryv/account-backup').Backup`) consuming pluggable adapters (`StorageWriter` + `StateStore`). The core resource-fetch modules are browser-isomorphic — `fetch` for HTTP, `StorageWriter.openWriteStream` for output. The CLI is preserved as a thin shim; behavior is byte-identical to 0.5.0 on a first run against a fresh backup directory. A sibling `pryv-account-backup-webapp` repository ships the browser-side adapter pair + sample UI.
 
-**Upstream context driving v0.6.0:** the dedicated `/audit/logs` endpoint is being removed from open-pryv.io. v0.5.0 calls this endpoint and will fail once the removal lands. v0.6.0 fetches audit via `events.get?streams=[':_audit:accesses',':_audit:actions']` instead — audit is a regular `@pryv/datastore` mounted at `:_audit:*` on every Pryv core. This route is forward-compatible with the removal AND supports `modifiedSince`, which the dedicated endpoint does not.
+**Upstream context driving v0.6.0:** the dedicated `/audit/logs` endpoint was **removed** from open-pryv.io on 2026-06-15 (commit `19d1c11f`). v0.5.0 calls this endpoint directly and is now production-broken for the audit-log section against any deployment running that build. v0.6.0 fetches audit via `events.get?streams=[':_audit:accesses',':_audit:actions']` instead — audit is a regular `@pryv/datastore` mounted at `:_audit:*` on every Pryv core. This route continues to work post-removal AND supports `modifiedSince`, which the dedicated endpoint never did.
 
 ### Added
 
