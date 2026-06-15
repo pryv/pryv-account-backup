@@ -29,10 +29,14 @@ describe('backup', function () {
 
     const eventsRequest = 'events?fromTime=-2350373077&toTime=' + new Date() / 1000 + '&state=all';
     const streamsRequest = 'streams?state=all';
-    // 'followed-slices' is v1-only (returns 404 in v2); 'audit/logs' is
-    // included. 'webhooks.json' + 'manifest.json' + 'hf-data/*' are produced
-    // by separate modules and checked further down.
-    resources = ['account', streamsRequest, 'accesses', 'profile/public', eventsRequest, 'audit/logs?fromTime=-2350373077&toTime=2350373077'];
+    // The dedicated /audit/logs route was removed from open-pryv.io on
+    // 2026-06-15 (commit 19d1c11f); v0.6.0 fetches audit via the standard
+    // events API on the :_audit:* store streams. `audit_logs.json` (output
+    // filename unchanged) is checked under DSAR artefacts below.
+    // 'followed-slices' is v1-only (returns 404 in v2).
+    // 'webhooks.json' + 'manifest.json' + 'hf-data/*' are produced by
+    // separate modules and checked further down.
+    resources = ['account', streamsRequest, 'accesses', 'profile/public', eventsRequest];
 
     backup.signInToPryv(settings).then((conn, err) => { 
       if (err) return done(err);
@@ -77,6 +81,7 @@ describe('backup', function () {
         function checkDsarArtifacts(stepDone) {
           fs.existsSync(settings.backupDirectory.webhooksFile).should.equal(true, 'webhooks.json missing');
           fs.existsSync(settings.backupDirectory.manifestFile).should.equal(true, 'manifest.json missing');
+          fs.existsSync(settings.backupDirectory.auditLogsFile).should.equal(true, 'audit_logs.json missing');
           // hf-data dir only exists if the account has series events; tolerate absence.
           stepDone();
         },
