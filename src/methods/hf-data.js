@@ -19,22 +19,35 @@ const async = require('async');
  */
 exports.download = function (connection, backupDir, callback, log) {
   if (!log) log = console.log;
-  const eventsFile = backupDir.eventsFile;
-  if (!fs.existsSync(eventsFile)) {
-    log('hf-data: skipping (no events.json — events fetch must run first)');
+  // Walk every event-data file the backup carries — legacy single-file
+  // `events.json` (older backups) and chunked `events-YYYY-MM.json` (0.5.0+).
+  // Prior to this fix, only the legacy file was inspected; chunked-only
+  // backups silently skipped series-event discovery and produced an empty
+  // hf-data/ folder, dropping the bulk of HFS-using subjects' data from the
+  // Art.15 / Art.20 bundle.
+  const eventFiles = (typeof backupDir.listEventFiles === 'function')
+    ? backupDir.listEventFiles()
+    : (fs.existsSync(backupDir.eventsFile) ? [backupDir.eventsFile] : []);
+  if (eventFiles.length === 0) {
+    log('hf-data: skipping (no events-*.json files — events fetch must run first)');
     return callback();
   }
 
-  let parsed;
-  try {
-    parsed = JSON.parse(fs.readFileSync(eventsFile, 'utf8'));
-  } catch (err) {
-    return callback(err);
+  const seriesEvents = [];
+  for (const file of eventFiles) {
+    let parsed;
+    try {
+      parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (err) {
+      return callback(err);
+    }
+    const events = Array.isArray(parsed.events) ? parsed.events : [];
+    for (const e of events) {
+      if (typeof e.type === 'string' && e.type.indexOf('series:') === 0) {
+        seriesEvents.push(e);
+      }
+    }
   }
-  const events = Array.isArray(parsed.events) ? parsed.events : [];
-  const seriesEvents = events.filter(function (e) {
-    return typeof e.type === 'string' && e.type.indexOf('series:') === 0;
-  });
 
   if (seriesEvents.length === 0) {
     log('hf-data: no series events found, skipping');
