@@ -1,73 +1,56 @@
-const fs = require('fs');
-const path = require('path');
 const apiResources = require('./api-resources');
 
 /**
- * Fetch per-access version history for every access listed in `accesses.json`.
+ * Fetch per-access version history for every access supplied. Each access is
+ * queried with `GET /accesses/<id>?includeHistory=true` and written to
+ * `accesses-history/<accessId>.json`.
  *
- * Each access is queried with `GET /accesses/<id>?includeHistory=true`, which
- * returns `{ access, history, current }`. Written one file per access at
- * `accesses-history/<accessId>.json`. Useful when an Art.15(1)(a) DSAR needs
- * the consent-state-at-time-of-access provenance trail beyond what
- * `accesses-all.json` (current + deletions + expired) carries.
+ * Used when an Art.15(1)(a) DSAR needs the consent-state-at-time-of-access
+ * provenance trail beyond what `accesses-all.json` (current + deletions +
+ * expired) carries.
  *
- * This is O(N) in the access count; opt-in only.
+ * O(N) in the access count; opt-in only.
  *
  * @param connection { endpoint, token }
- * @param backupDirectory BackupDirectory instance
+ * @param writerOrLegacy  StorageWriter (preferred) or a BackupDirectory
+ * @param accessesArray   array of accesses from `accesses.json`; passed by the
+ *                        orchestrator so this module doesn't need to read disk
+ *                        (browser flavor: same array, in-memory). Legacy
+ *                        callers may pass `null` and rely on the
+ *                        BackupDirectory's `accessesFile` — kept for v0.5.0
+ *                        back-compat only.
  * @param callback (err)
  * @param log (msg)
  */
-exports.download = function download (connection, backupDirectory, callback, log) {
+exports.download = function download (connection, writer, accessesArray, callback, log) {
   if (!log) log = console.log;
-
-  if (!fs.existsSync(backupDirectory.accessesFile)) {
-    log('No accesses.json present — skipping per-access history.');
-    return callback();
+  if (writer == null || typeof writer.openWriteStream !== 'function') {
+    throw new Error('accesses-history.download requires a StorageWriter');
+  }
+  if (!Array.isArray(accessesArray)) {
+    throw new Error('accesses-history.download requires an accessesArray (use Backup orchestrator for the legacy CLI path)');
   }
 
-  let accessesData;
-  try {
-    accessesData = JSON.parse(fs.readFileSync(backupDirectory.accessesFile, 'utf8'));
-  } catch (err) {
-    return callback(err);
-  }
-  const accesses = Array.isArray(accessesData.accesses) ? accessesData.accesses : [];
-  if (accesses.length === 0) {
+  if (accessesArray.length === 0) {
     log('No accesses to walk for version history.');
     return callback();
   }
 
-  // Output dir
-  try {
-    fs.mkdirSync(backupDirectory.accessesHistoryDir, { recursive: true });
-  } catch (err) {
-    return callback(err);
-  }
-
-  log('Fetching per-access version history for ' + accesses.length + ' access(es).');
+  log('Fetching per-access version history for ' + accessesArray.length + ' access(es).');
 
   let i = 0;
   function next () {
-    if (i >= accesses.length) return callback();
-    const access = accesses[i++];
+    if (i >= accessesArray.length) return callback();
+    const access = accessesArray[i++];
     const accessId = access && access.id;
     if (!accessId) return next();
-    // Access ids in the wire format are `<base>:<serial>` composite refs; the
-    // accesses.getOne endpoint accepts either the composite or the base. Use
-    // the composite as-is so the history call lands on the same head row.
     apiResources.toJSONFile({
-      folder: backupDirectory.accessesHistoryDir,
+      writer: writer,
       resource: 'accesses/' + encodeURIComponent(accessId) + '?includeHistory=true',
-      // api-resources derives the filename by replacing '/' with '_' and
-      // stripping the '?…' suffix, so this yields `accesses_<accessId>.json`
-      // — collapse to just `<accessId>.json` via extraFileName override below.
-      extraFileName: '',
       connection: connection,
-      filename: encodeURIComponent(accessId) + '.json'
+      filename: 'accesses-history/' + encodeURIComponent(accessId) + '.json'
     }, function (err) {
       if (err) {
-        // Log + continue — one failed access shouldn't abort the whole walk.
         log('Failed to fetch history for access ' + accessId + ': ' + err);
       }
       next();

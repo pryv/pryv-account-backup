@@ -33,8 +33,11 @@ const apiResources = require('./api-resources');
  * @param {function} callback (err)
  * @param {function} [log] (msg)
  */
-exports.download = function download (connection, backupDirectory, options, callback, log) {
+exports.download = function download (connection, writer, options, callback, log) {
   if (!log) log = console.log;
+  if (writer == null || typeof writer.openWriteStream !== 'function') {
+    throw new Error('audit-as-events.download requires a StorageWriter');
+  }
   options = options || {};
   const stateAll = options.includeTrashed ? '&state=all' : '';
   const modifiedClause = (options.modifiedSince != null)
@@ -47,20 +50,15 @@ exports.download = function download (connection, backupDirectory, options, call
     ':_audit:actions'
   ]));
 
-  // includeDeletions=true so audit-row deletions (rare — audit is generally
-  // append-only — but possible under operator retention policy) show up in
-  // the incremental delta.
   const resource = 'events?streams=' + streamsParam +
     '&includeDeletions=true' +
     modifiedClause +
     stateAll;
 
   apiResources.toJSONFile({
-    folder: backupDirectory.baseDir,
+    writer: writer,
     resource: resource,
     connection: connection,
-    // Use the canonical `audit_logs.json` filename regardless of which
-    // endpoint produced it; consumers keying on the path keep working.
     filename: 'audit_logs.json'
   }, callback, log);
 };

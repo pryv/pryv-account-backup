@@ -1,4 +1,3 @@
-const https = require('https');
 const apiResources = require('./api-resources');
 
 const FAR_PAST = -2350373077;
@@ -25,7 +24,9 @@ const SECONDS_PER_DAY = 86400;
  * shape and are individually hashable by the integrity manifest.
  *
  * @param connection { endpoint, token }
- * @param backupDirectory BackupDirectory instance (provides baseDir)
+ * @param writerOrLegacy StorageWriter instance (preferred) or a BackupDirectory
+ *                       (legacy v0.5.0 callers — auto-wrapped via the writer's
+ *                       resolver in apiResources)
  * @param options
  *        options.includeTrashed {boolean}    appends `&state=all`
  *        options.modifiedSince  {number}     when present, switches to
@@ -39,8 +40,11 @@ const SECONDS_PER_DAY = 86400;
  * @param callback (err)
  * @param log (msg)
  */
-exports.download = function download (connection, backupDirectory, options, callback, log) {
+exports.download = function download (connection, writer, options, callback, log) {
   if (!log) log = console.log;
+  if (writer == null || typeof writer.openWriteStream !== 'function') {
+    throw new Error('events-chunked.download requires a StorageWriter');
+  }
   options = options || {};
   const stateAll = options.includeTrashed ? '&state=all' : '';
 
@@ -52,7 +56,7 @@ exports.download = function download (connection, backupDirectory, options, call
     log('Events incremental: modifiedSince=' + options.modifiedSince +
       ' (' + new Date(options.modifiedSince * 1000).toISOString() + ')');
     apiResources.toJSONFile({
-      folder: backupDirectory.baseDir,
+      writer: writer,
       resource: resource,
       connection: connection,
       filename: 'events-incremental-' + runTs + '.json'
@@ -82,7 +86,7 @@ exports.download = function download (connection, backupDirectory, options, call
       // api-resources.toJSONFile derives the filename by stripping `?…` from
       // the resource string, so passing the full query yields `events-YYYY-MM.json`.
       apiResources.toJSONFile({
-        folder: backupDirectory.baseDir,
+        writer: writer,
         resource: resource,
         extraFileName: '-' + w.label,
         connection: connection
@@ -169,26 +173,24 @@ function formatLabel (date) {
   return y + '-' + m;
 }
 
+// Isomorphic fetch-based small-JSON GET. Used for the limit=1 probes; not for
+// streamed responses (those go through apiResources.toJSONFile).
 function apiGet (connection, pathAndQuery, callback) {
   const url = new URL(connection.endpoint);
-  const fullPath = url.pathname.replace(/\/$/, '') + pathAndQuery;
-  const opts = {
-    host: url.hostname,
-    port: url.port || 443,
-    path: fullPath,
-    headers: { Authorization: connection.token }
-  };
-  https.get(opts, function (res) {
-    if (res.statusCode !== 200) {
-      return callback(new Error('Probe failed: ' + res.statusCode + ' ' + res.statusMessage));
-    }
-    let body = '';
-    res.setEncoding('utf8');
-    res.on('data', function (chunk) { body += chunk; });
-    res.on('end', function () {
-      try { callback(null, JSON.parse(body)); } catch (e) { callback(e); }
+  const base = url.protocol + '//' + url.host + url.pathname.replace(/\/$/, '');
+  const fullUrl = base + pathAndQuery;
+  (async function () {
+    const res = await fetch(fullUrl, {
+      headers: { Authorization: connection.token }
     });
-  }).on('error', callback);
+    if (res.status !== 200) {
+      throw new Error('Probe failed: ' + res.status + ' ' + (res.statusText || ''));
+    }
+    return await res.json();
+  })().then(
+    function (json) { callback(null, json); },
+    function (err) { callback(err); }
+  );
 }
 
 // Exported for unit tests.

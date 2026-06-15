@@ -39,6 +39,7 @@
     "read": "^5.0.1"
   },
   "devDependencies": {
+    "esbuild": "^0.28.1",
     "mocha": "^11.7.6",
     "should": "^13.2.3",
     "superagent": "^10.3.0"

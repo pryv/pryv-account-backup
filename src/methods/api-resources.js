@@ -1,98 +1,101 @@
-const fs = require('fs');
-const https = require('https');
-
 /**
- * Downloads the requested Pryv API resource and saves it to a local file under the name
- * `resource.json`.
+ * Streamed Pryv API resource → file writer.
  *
- * @param params {object}
- *        params.connection {pryv.Connection}
- *        params.resource {string} Pryv API resource name
- *        params.baseDir {string} directory containing user backup data
- * @param callback
+ * Pure isomorphic since v0.6.0:
+ *   - HTTP: global `fetch` (Node 18+ + every modern browser),
+ *   - disk: `writer.openWriteStream(relPath)` from a `StorageWriter` adapter.
+ *
+ * Callers MUST supply a `StorageWriter`. The Node CLI wraps a `BackupDirectory`
+ * in `NodeFsStorageWriter` once (in `Backup.run`) and passes the writer to
+ * this module — that keeps this file Node-free and browser-bundle-clean.
+ *
+ * @param params.writer       StorageWriter (required)
+ * @param params.resource     Pryv API resource path, e.g. `events?modifiedSince=…`
+ * @param params.connection   { endpoint, token }
+ * @param params.extraFileName  optional suffix appended before `.json`
+ * @param params.filename     optional full output filename (overrides derivation)
+ * @param callback (err)
+ * @param log optional log fn
  */
-exports.toJSONFile = function streamApiToFile(params, callback, log) {
-  connection = params.connection;
-  params.extraFileName =  params.extraFileName || '';
-  if (!log) {
-    log = console.log;
-  }
+exports.toJSONFile = function streamApiToFile (params, callback, log) {
+  if (!log) log = console.log;
+  const connection = params.connection;
+  const extraFileName = params.extraFileName || '';
 
-  log('Fetching: ' + params.resource + params.extraFileName + ' in folder: ' + params.folder);
-  let outputFilename = null;
-  let writeStream = null;
-  let fullPath = null;
+  const writer = resolveWriter(params);
+  const outputFilename = params.filename ||
+    (params.resource.replace('/', '_').split('?')[0] + extraFileName + '.json');
 
-  function openStreamsIfNeeded() {
-      if (outputFilename) return;
-     // `params.filename`, when present, overrides the resource-derived name
-     // (used by accesses-history to produce one file per composite access
-     // id without leaking `accesses_…` prefixes).
-     outputFilename = params.filename ||
-       (params.resource.replace('/', '_').split('?')[0] + params.extraFileName + '.json');
-     fullPath = params.folder  + outputFilename;
-     writeStream = fs.createWriteStream(fullPath, { encoding: 'utf8' });
-     log('Streaming data to: ' + fullPath);
-  }
+  const target = (writer.describeTarget && writer.describeTarget()) || '';
+  log('Fetching: ' + params.resource + extraFileName + (target ? ' in folder: ' + target : ''));
 
-  const url = new URL(params.connection.endpoint);
+  const url = new URL(connection.endpoint);
+  const base = url.protocol + '//' + url.host + url.pathname.replace(/\/$/, '');
+  const fullUrl = base + '/' + params.resource;
 
-  const options = {
-    host: url.hostname,
-    port: url.port || 443,
-    path: url.pathname + params.resource,
-    headers: {'Authorization': connection.token}
-  };
-
-  // --- pretty timed log ---//
-  const timeRepeat = 1000;
   let total = 0;
   let done = false;
-  const timeLog = function() {
+  const timeLog = function () {
     if (done) return;
-    log('Fetching ' + outputFilename + ': ' +  prettyPrint(total));
-    setTimeout(timeLog, timeRepeat);
-  }
-  setTimeout(timeLog, timeRepeat);
+    log('Fetching ' + outputFilename + ': ' + prettyPrint(total));
+    setTimeout(timeLog, 1000);
+  };
+  setTimeout(timeLog, 1000);
 
-
-  https.get(options, function (res) {
-    if (res.statusCode != 200) {
-      log('Error while fetching https://' + options.host + options.path + ' Code: ' + res.statusCode + ' ' + res.statusMessage);
-      done = true;
-      callback(res.statusCode);
-      return;
-    };
-    res.setEncoding('utf8');
-
-    res.on('data', function (chunk) {
-      openStreamsIfNeeded();
-      total += chunk.length;
-      writeStream.write(chunk);
+  (async function () {
+    const res = await fetch(fullUrl, {
+      headers: { Authorization: connection.token }
     });
+    if (res.status !== 200) {
+      throw new Error('HTTP ' + res.status + ' ' + (res.statusText || '') +
+        ' while fetching ' + fullUrl);
+    }
+    const writeStream = writer.openWriteStream(outputFilename);
 
-    res.on('end', function () {
-      openStreamsIfNeeded();
-      done = true;
-      log('Received: ' + outputFilename + ' '  + prettyPrint(total));
-      writeStream.end(callback);
-      //callback();
-    });
-
-  }).on('error', function (e) {
-    if (done) return;
+    // res.body is a ReadableStream in both Node 18+ fetch and browser fetch.
+    const reader = res.body.getReader();
+    while (true) {
+      const { done: streamDone, value } = await reader.read();
+      if (streamDone) break;
+      total += value.byteLength;
+      writeStream.write(value);
+    }
+    await endStream(writeStream);
     done = true;
-    log('Error while fetching https://' + options.host + options.path);
-    callback(e);
+    log('Received: ' + outputFilename + ' ' + prettyPrint(total));
+  })().then(
+    function () { callback(); },
+    function (err) {
+      if (!done) {
+        done = true;
+        log('Error while fetching ' + fullUrl + ': ' + (err.message || err));
+      }
+      callback(err);
+    }
+  );
+};
+
+function resolveWriter (params) {
+  if (params.writer != null) return params.writer;
+  throw new Error('api-resources.toJSONFile requires `writer`');
+}
+
+function endStream (writeStream) {
+  return new Promise(function (resolve, reject) {
+    if (typeof writeStream.end !== 'function') return resolve();
+    try {
+      writeStream.end(function (err) {
+        if (err) return reject(err);
+        resolve();
+      });
+    } catch (e) {
+      reject(e);
+    }
   });
 }
 
-function prettyPrint(total) {
-  if (total > 1000000) {
-    return Math.round(total / 1000000) + 'MB';
-  }
-  if (total > 1000) {
-    return Math.round(total / 1000) + 'KB';
-  }
+function prettyPrint (total) {
+  if (total > 1000000) return Math.round(total / 1000000) + 'MB';
+  if (total > 1000) return Math.round(total / 1000) + 'KB';
   return total + 'Bytes';
 }

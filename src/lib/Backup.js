@@ -139,7 +139,7 @@ class Backup {
           // Audit no longer rides this list — it's fetched via
           // events.get on :_audit:* streams in a dedicated step below so
           // modifiedSince applies (the dedicated /audit/logs endpoint does
-          // not support modifiedSince).
+          // not support modifiedSince and is being removed from the API).
           const accessesAllRequest = 'accesses?includeDeletions=true&includeExpired=true';
           async.mapSeries([
             'account', streamsRequest, 'accesses', accessesAllRequest,
@@ -147,7 +147,7 @@ class Backup {
           ], function (resource, cb) {
             const extra = resource === accessesAllRequest ? '-all' : '';
             apiResources.toJSONFile({
-              folder: backupDirectory.baseDir,
+              writer: writer,
               resource: resource,
               extraFileName: extra,
               connection: connection
@@ -155,13 +155,13 @@ class Backup {
           }, done);
         },
         function fetchAuditAsEvents (stepDone) {
-          auditAsEvents.download(connection, backupDirectory, {
+          auditAsEvents.download(connection, writer, {
             includeTrashed: params.includeTrashed,
             modifiedSince: auditModifiedSince
           }, stepDone, log);
         },
         function fetchEventsChunked (stepDone) {
-          eventsChunked.download(connection, backupDirectory, {
+          eventsChunked.download(connection, writer, {
             includeTrashed: params.includeTrashed,
             modifiedSince: eventsModifiedSince,
             runStartedAt: runStartedAt,
@@ -171,13 +171,17 @@ class Backup {
           }, stepDone, log);
         },
         function fetchAppProfiles (stepDone) {
+          // The per-app-profile fetches go into the `app_profiles/`
+          // subdirectory; api-resources writes via the writer, which routes
+          // the relative path under baseDir.
           const accessesData = JSON.parse(fs.readFileSync(backupDirectory.accessesFile, 'utf8'));
           async.mapSeries(accessesData.accesses, function (access, cb) {
             if (access.type !== 'app') return cb();
             apiResources.toJSONFile({
-              folder: backupDirectory.appProfilesDir,
+              writer: writer,
               resource: 'profile/app',
               extraFileName: '_' + access.id,
+              filename: 'app_profiles/profile_app_' + access.id + '.json',
               connection: { endpoint: connection.endpoint, token: access.token }
             }, cb, log);
           }, stepDone);
@@ -187,7 +191,10 @@ class Backup {
             log('Skipping per-access version history (opt-in)');
             return stepDone();
           }
-          accessesHistory.download(connection, backupDirectory, stepDone, log);
+          // Pass the accesses array explicitly so accesses-history doesn't
+          // need to read disk — keeps the per-method module browser-friendly.
+          const accessesData = JSON.parse(fs.readFileSync(backupDirectory.accessesFile, 'utf8'));
+          accessesHistory.download(connection, writer, accessesData.accesses || [], stepDone, log);
         },
         function fetchAttachments (stepDone) {
           if (params.includeAttachments) {
