@@ -7,7 +7,7 @@ This repo is the **library + CLI** for end-user-driven Pryv account backup. The 
 A single tool with two consumption modes:
 
 - **CLI** — `npm install && npm start` (the historical entry point; behavior is preserved through every release).
-- **Library** — `require('@pryv/account-backup')` exposes `Backup` + adapter interfaces (`StorageWriter`, `StateStore`) + CLI implementations (`NodeFsStorageWriter`, `FolderStateStore`). The browser webapp consumes the **browser-isomorphic** per-method modules directly (`api-resources`, `events-chunked`, `audit-as-events`, `accesses-history`); the Node-only modules (`attachments`, `hf-data`, `webhooks-export`, `manifest`) stay CLI-only.
+- **Library** — `require('@pryv/account-backup')` exposes `Backup` + adapter interfaces (`StorageWriter`, `StateStore`) + CLI implementations (`NodeFsStorageWriter`, `FolderStateStore`). Seven per-method modules are **browser-isomorphic** since v0.7.0 (`api-resources`, `events-chunked`, `audit-as-events`, `accesses-history`, `attachments`, `hf-data`, `webhooks-export`); the only Node-only module is `manifest` (sha256 stays CLI-only).
 
 The tool produces a portable account dump suitable for GDPR Art.15 / Art.20, CCPA §1798.110 / §1798.115, PIPEDA Principle 4.9, Swiss nLPD Art.25, HIPAA-privacy §164.524 disclosure requests.
 
@@ -27,39 +27,68 @@ Per-user run output (CLI, in a folder; webapp, across N ZIP files):
 | `events-YYYY-MM.json` | `GET /events?fromTime=…&toTime=…` per monthly chunk (initial run) | preserves the v0.5.0 chunking story for first runs |
 | `events-incremental-<TS>.json` | `GET /events?modifiedSince=T&includeDeletions=true` (subsequent runs) | only events with `modified > T`; deletions included |
 | `accesses-history/<accessId>.json` | per-access `GET /accesses/<id>?includeHistory=true` (opt-in) | O(N) calls; opt-in via CLI prompt or `params.includeAccessHistory` |
-| `attachments/<eventId>_<filename>` | per-attachment `GET /events/<id>/<attId>` (opt-in, **CLI only**) | streamed binary; webapp does not expose attachments |
-| `hf-data/<eventId>.json` | per `series:*` event `GET /events/<id>/series` (**CLI only**) | HFS data points |
-| `webhooks.json` | per-access `GET /webhooks` (**CLI only**) | aggregated by `accessId` |
+| `attachments/<eventId>_<fileName>` | per-attachment `GET /events/<id>/<attId>?readToken=…` (opt-in) | streamed binary; both CLI + webapp |
+| `hf-data/<eventId>.json` | per `series:*` event `GET /events/<id>/series` (opt-in) | HFS data points; both CLI + webapp |
+| `webhooks.json` | per-access `GET /webhooks` (opt-in) | aggregated by `accessId`; both CLI + webapp |
 | `manifest.json` | sha256 per file (**CLI only**) | tamper-evidence; webapp does not generate this |
-| `.state.json` (CLI) / `localStorage` (webapp) | `lastRunAt` + per-resource `lastModifiedSince` + tool/format version | drives incremental fetch on the next run |
+| `sync-state.json` | portable kv snapshot of `lastRunAt` + per-resource `lastModifiedSince` + tool/format version | both CLI + webapp (v0.7.0+); subject downloads + re-uploads to drive cross-session incremental in the browser |
+| `.sync-state.json` (CLI, hidden) / `localStorage` (webapp) | operational store: kv state + per-category work refs (`attachment`, `series-event`, `webhook`) discovered during one run | refs are pruned at run-end; only kv goes into the portable `sync-state.json` |
 
 ## Architecture
 
 ```
 src/lib/
-├── Backup.js                  ← orchestrator (Node CLI; coordinates per-method modules)
+├── Backup.js                  ← orchestrator (coordinates per-method modules; wires onParsed
+│                                tee → state.pushRef; drains refs through per-category drainers)
 ├── index.js                   ← library entry: Backup + adapters
 └── adapters/
     ├── StorageWriter.js       ← abstract: openWriteStream / exists / finalizeBatch
-    ├── StateStore.js          ← abstract: get / set / getAll / flush
+    ├── StateStore.js          ← abstract: kv (get / set / getAll / flush)
+    │                            + refs (pushRef / listPending / markDone / clearCategory)
+    │                            + portable (export / import)
     ├── NodeFsStorageWriter.js ← writes to disk; back-compat with BackupDirectory
-    └── FolderStateStore.js    ← .state.json sentinel in baseDir
+    └── FolderStateStore.js    ← .sync-state.json sentinel in baseDir; auto-migrates from .state.json
 
-src/methods/                   ← per-resource fetchers
-├── api-resources.js           ← isomorphic (fetch + writer)
-├── events-chunked.js          ← isomorphic
-├── audit-as-events.js         ← isomorphic
-├── accesses-history.js        ← isomorphic
-├── attachments.js             ← Node-only (multi-GB streaming)
-├── hf-data.js                 ← Node-only (binary streaming)
-├── webhooks-export.js         ← Node-only
-└── manifest.js                ← Node-only (sha256)
+src/methods/                   ← per-resource fetchers (all browser-isomorphic except manifest)
+├── api-resources.js           ← fetch + writer; opt-in onParsed(doc) tee
+├── events-chunked.js          ← chunked initial / single incremental; onEvents(events[]) lift
+├── audit-as-events.js         ← :_audit:* streams via events.get
+├── accesses-history.js        ← per-access version history (in-memory array)
+├── attachments.js             ← drains 'attachment' refs; binary stream pipe
+├── hf-data.js                 ← drains 'series-event' refs; data-points fetch
+├── webhooks-export.js         ← drains 'webhook' refs; per-access /webhooks
+└── manifest.js                ← Node-only (sha256 tamper-evidence)
 
 scripts/
 ├── start-backup.js            ← CLI entry (interactive prompts)
 └── start-restore.js           ← CLI restore (experimental, deliberately limited)
 
 src/restore.js                 ← restore-side logic (CLI only; library does NOT export restore)
+```
+
+## Ref-tracking flow (v0.7.0+)
+
+```
+            ┌──────────────────────────────────────────────┐
+fetch step  │  api-resources.toJSONFile({ onParsed: ... }) │
+            │  events-chunked.download({ onEvents: ... })  │
+            └──────────────┬───────────────────────────────┘
+                           │  parsed doc
+                           ▼
+                ┌──────────────────────┐
+   orchestrator│ state.pushRef(cat,r)  │
+                └──────────┬───────────┘
+                           │
+                           ▼
+              .sync-state.json (Node) / localStorage (browser)
+                           │
+                           │  state.listPending(cat) →
+                           ▼
+                ┌──────────────────────┐
+drain step      │ attachments.download │  fetch + write + markDone
+                │   / hf-data.download │
+                │ / webhooks.download  │
+                └──────────────────────┘
 ```
 
 ## Phases I should NOT cross without operator approval

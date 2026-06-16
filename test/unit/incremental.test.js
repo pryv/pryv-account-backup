@@ -174,83 +174,98 @@ describe('[PAAU] audit-as-events query construction', function () {
   });
 });
 
-// ─── [PAHF] hf-data multi-file discovery (regression fix) ───
+// ─── [PAHF] hf-data series-event drain (v0.7.0 contract) ───
 //
-// Pre-fix, hf-data.js only inspected the legacy `events.json` and silently
-// skipped chunked `events-YYYY-MM.json` files — every v0.5.0 backup of an
-// HFS-using account dropped the bulk of the subject's data without warning.
+// The orchestrator now extracts series-event refs as `events-*.json` files
+// stream by (via `onEvents` in events-chunked → `state.pushRef`). hf-data
+// drains them. These tests cover the drain side; the events-chunked tee
+// side is covered in [PALI] below.
 
-describe('[PAHF] hf-data multi-file series discovery', function () {
+describe('[PAHF] hf-data drains series-event refs from StateStore', function () {
   let tmpDir;
-  let dir;
+  let store;
+  let originalFetch;
+  let fetchCalls;
 
   before(function () {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hfd-test-'));
-    dir = new BackupDirectory('https://token@host.example.com/', tmpDir);
-    fs.mkdirSync(dir.baseDir, { recursive: true });
   });
 
   after(function () {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('discovers series events from chunked files (events-YYYY-MM.json only)', function (done) {
-    // Two chunked files; one carries a series event.
-    fs.writeFileSync(path.join(dir.baseDir, 'events-2024-01.json'),
-      JSON.stringify({ events: [{ id: 'e1', type: 'note/txt' }] }));
-    fs.writeFileSync(path.join(dir.baseDir, 'events-2024-02.json'),
-      JSON.stringify({ events: [{ id: 'e2', type: 'series:mass/kg' }] }));
-
-    // Stub a connection that NEVER answers — the test only verifies the
-    // skip-decision logic. Stub https.get to short-circuit so no socket opens.
-    const https = require('https');
-    const originalGet = https.get;
-    let attempted = false;
-    https.get = function (opts, cb) {
-      attempted = true;
-      // Provide a phony 200 response with empty body to satisfy hf-data flow.
-      const EventEmitter = require('events');
-      const res = new EventEmitter();
-      res.statusCode = 200;
-      res.setEncoding = () => {};
-      setImmediate(() => {
-        cb(res);
-        res.emit('end');
+  beforeEach(function () {
+    store = new FolderStateStore(tmpDir);
+    fetchCalls = [];
+    originalFetch = global.fetch;
+    global.fetch = function (url) {
+      fetchCalls.push(url);
+      const body = JSON.stringify({ events: [] });
+      const encoded = new TextEncoder().encode(body);
+      let yielded = false;
+      return Promise.resolve({
+        status: 200,
+        statusText: 'OK',
+        body: {
+          getReader () {
+            return {
+              read () {
+                if (yielded) return Promise.resolve({ done: true });
+                yielded = true;
+                return Promise.resolve({ done: false, value: encoded });
+              }
+            };
+          }
+        }
       });
-      return { on: () => {} };
     };
-
-    hfData.download(
-      { endpoint: 'https://x.example.com/', token: 't' },
-      dir,
-      function (err) {
-        https.get = originalGet;
-        should.not.exist(err);
-        // Confirm hf-data ACTUALLY attempted to fetch — pre-fix this would
-        // never reach the https.get call because the legacy `events.json`
-        // path didn't exist.
-        attempted.should.equal(true);
-        done();
-      },
-      () => {}
-    );
   });
 
-  it('falls through to skip when no event files exist at all', function (done) {
-    const emptyTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hfd-empty-'));
-    const emptyDir = new BackupDirectory('https://token@host.example.com/', emptyTmpDir);
-    fs.mkdirSync(emptyDir.baseDir, { recursive: true });
+  afterEach(async function () {
+    global.fetch = originalFetch;
+    await store.clearCategory('series-event');
+  });
 
-    hfData.download(
-      { endpoint: 'https://x.example.com/', token: 't' },
-      emptyDir,
-      function (err) {
-        should.not.exist(err);
-        fs.rmSync(emptyTmpDir, { recursive: true, force: true });
-        done();
-      },
-      () => {}
-    );
+  const fakeWriter = {
+    openWriteStream: () => ({ write: () => {}, end: (cb) => cb && cb() }),
+    exists: () => false,
+    describeTarget: () => '/mock/'
+  };
+
+  it('fetches one series resource per pending ref', async function () {
+    await store.pushRef('series-event', { key: 'e1', eventId: 'e1', type: 'series:mass/kg' });
+    await store.pushRef('series-event', { key: 'e2', eventId: 'e2', type: 'series:position/wgs84' });
+
+    await new Promise((resolve, reject) => {
+      hfData.download(
+        { endpoint: 'https://token@host.example.com/', token: 't' },
+        fakeWriter,
+        store,
+        {},
+        (err) => err ? reject(err) : resolve(),
+        () => {}
+      );
+    });
+
+    fetchCalls.length.should.equal(2);
+    fetchCalls[0].should.match(/\/events\/e1\/series$/);
+    fetchCalls[1].should.match(/\/events\/e2\/series$/);
+    (await store.listPending('series-event')).should.eql([]); // both drained
+  });
+
+  it('skips cleanly when no refs are pending', async function () {
+    await new Promise((resolve, reject) => {
+      hfData.download(
+        { endpoint: 'https://token@host.example.com/', token: 't' },
+        fakeWriter,
+        store,
+        {},
+        (err) => err ? reject(err) : resolve(),
+        () => {}
+      );
+    });
+    fetchCalls.length.should.equal(0);
   });
 });
 

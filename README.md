@@ -39,10 +39,12 @@ This downloads the following in JSON format:
 * **Webhooks** per access (`webhooks.json`, keyed by `accessId`) — added in 0.3.0
 
 As well as the following in binary files:
-* Attachment files (when `includeAttachments: true`)
+* Attachment files (when `includeAttachments: true`) — written to `attachments/<eventId>_<fileName>` (flat layout since 0.7.0)
 * **High-frequency series data points** (`hf-data/<eventId>.json`, one per `series:*` event) — added in 0.3.0
 
 Finally, a **per-file integrity manifest** is written to `manifest.json` — sha256 of every other file in the backup, plus tool version + ISO generation timestamp. A third party reading the backup tarball can re-hash each file and compare to detect truncation, corruption, or tampering mid-flight. The `manifest.verify(rootDir, cb)` helper does this programmatically.
+
+A **portable `sync-state.json`** is also written at the root of the backup directory — kv state (incremental thresholds + tool version) only, suitable for moving the disclosure across machines or driving the next run from a different baseDir. The CLI auto-reads it on the next run; the sample webapp accepts it as an upload on its login screen. Schema: [`docs/sync-state.md`](docs/sync-state.md).
 
 ### Running conditions
 
@@ -57,7 +59,7 @@ The package is git-clone-distributed — **not on the npm registry**. Pin to a t
 ```json
 {
   "dependencies": {
-    "pryv-account-backup": "github:pryv/pryv-account-backup#v0.6.0"
+    "pryv-account-backup": "github:pryv/pryv-account-backup#v0.7.0"
   }
 }
 ```
@@ -110,7 +112,9 @@ The class form decouples **what the backup does** (orchestration) from **where t
 
 ### Incremental backup
 
-On the second and subsequent runs against the same backup directory, the orchestrator reads `.state.json` (written at the end of every successful run), fetches events + audit-log entries via `events.get?modifiedSince=T&includeDeletions=true`, and writes a single `events-incremental-<TS>.json` (rather than re-chunking the full history). Small resources (`account`, `streams`, `accesses`, `profile`, `webhooks`) are still full-re-fetched — they're tiny.
+On the second and subsequent runs against the same backup directory, the orchestrator reads `.sync-state.json` (the hidden operational store, written at the end of every successful run; auto-migrated from a pre-v0.7.0 `.state.json` if present), fetches events + audit-log entries via `events.get?modifiedSince=T&includeDeletions=true`, and writes a single `events-incremental-<TS>.json` (rather than re-chunking the full history). Small resources (`account`, `streams`, `accesses`, `profile`, `webhooks`) are still full-re-fetched — they're tiny.
+
+For cross-session / cross-machine portability, the visible companion `sync-state.json` (no leading dot) is also written at the end of each run via the `StorageWriter`. The sample webapp uses this same file as a downloadable + re-uploadable artefact to drive true cross-browser incremental. Full schema at [`docs/sync-state.md`](docs/sync-state.md).
 
 ### Audit log via the standard events API
 

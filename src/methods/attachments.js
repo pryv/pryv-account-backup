@@ -1,176 +1,120 @@
 const async = require('async');
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
-const JSONStream = require('JSONStream');
+
+const CATEGORY = 'attachment';
 
 /**
- * Parses the events from the provided file and downloads their attachments
+ * Download every binary attachment whose ref is queued under the
+ * `attachment` category in the StateStore.
  *
- * @param connection {pryv.Connection}
- * @param backupDir {backup-directory}
- * @param callback
+ * Browser-isomorphic since v0.7.0:
+ *   - HTTP: global `fetch`,
+ *   - disk: `writer.openWriteStream('attachments/<eid>_<fileName>')`,
+ *   - work queue: `stateStore.listPending('attachment')` populated by the
+ *     orchestrator from the events stream via the `onParsed` hook.
+ *
+ * Per-attachment URL: `<apiEndpoint>events/<eid>/<attId>?readToken=<rt>`.
+ * The response stream is piped chunk-by-chunk into the writer; no full-body
+ * buffering, so multi-GB attachments stream through bounded memory in both
+ * flavors. Each successful download is marked done in the store, so an
+ * interrupted run resumes only the still-pending refs on the next attempt.
+ *
+ * Ref schema (pushed by the orchestrator):
+ *   { key: '<eventId>:<attId>', eventId, attId, fileName, readToken }
+ *
+ * @param connection   { endpoint, token }
+ * @param writer       StorageWriter
+ * @param stateStore   StateStore (drains category 'attachment')
+ * @param options      { concurrency?: number }   default 10 parallel downloads
+ * @param callback     (err)
+ * @param log          (msg)
  */
-exports.download = function (connection, backupDir, callback, log) {
-  if (!log) {
-    log = console.log;
+exports.download = function download (connection, writer, stateStore, options, callback, log) {
+  if (!log) log = console.log;
+  if (writer == null || typeof writer.openWriteStream !== 'function') {
+    throw new Error('attachments.download requires a StorageWriter');
   }
+  if (stateStore == null || typeof stateStore.listPending !== 'function') {
+    throw new Error('attachments.download requires a StateStore');
+  }
+  options = options || {};
+  const concurrency = options.concurrency || 10;
 
-  loadStreamMapIfNeed(backupDir, log);
-  loadEventFile(connection, backupDir, function (error, attachments) {
-    if (error) {
-      log('Failed parsing event file for attachments' + error);
-      return callback(error);
+  (async function () {
+    const refs = await stateStore.listPending(CATEGORY);
+    if (refs.length === 0) {
+      log('attachments: no pending attachments');
+      return [];
     }
-
-    // Download attachment files in 10 parralel calls
-    async.mapLimit(attachments, 10, function (item, callback2) {
-      getAttachment(connection, backupDir, item, callback2, log);
-    }, function (error) {
-      if (error) {
-        log('Error while downloading the attachments: ' + error);
-        callback(error);
-        return;
+    log('attachments: downloading ' + refs.length + ' attachment(s)');
+    return refs;
+  })().then(function (refs) {
+    if (refs.length === 0) return callback();
+    async.mapLimit(refs, concurrency, function (att, done) {
+      downloadOne(connection, writer, stateStore, att, log, done);
+    }, function (err) {
+      if (err) {
+        log('attachments: failed — ' + (err.message || err));
+        return callback(err);
       }
-      log('Download done');
+      log('attachments: done');
       callback();
     });
-
-  }, log);
-
+  }, callback);
 };
 
-/**
- * Create a map
- * @param {*} backupDir 
- * @param {*} log 
- * @returns 
- */
-function loadStreamMapIfNeed(backupDir, log) {
-  if (! backupDir.settingAttachmentUseStreamsPath) return;
-  log('Loading streams Dir');
-  try {
-    const streamsTree = JSON.parse(fs.readFileSync(backupDir.streamsFile, 'utf8')) ;
-    function mapTree(childs, path) {
-      for (const child of childs) {
-        const childPath = path + '/' + child.name.replaceAll('..','__'); // escape all ".."
-        backupDir.streamsMap[child.id] = childPath;
-        if (child.childrens) mapTree(child.childrens, childPath);
-      }
-    }
-    mapTree(streamsTree.streams, '');
-  } catch (error) {
-    log('Error while reading streams: ' + error);
+function downloadOne (connection, writer, stateStore, att, log, callback) {
+  const fileName = att.fileName || att.attId;
+  const relPath = 'attachments/' + att.eventId + '_' + fileName;
+  if (typeof writer.exists === 'function' && writer.exists(relPath)) {
+    log('attachments: skipping existing ' + relPath);
+    return stateStore.markDone(CATEGORY, att.key).then(
+      function () { callback(); },
+      callback
+    );
   }
+  const url = new URL(connection.endpoint);
+  const base = url.protocol + '//' + url.host + url.pathname.replace(/\/$/, '');
+  const fullUrl = base + '/events/' + encodeURIComponent(att.eventId) +
+    '/' + encodeURIComponent(att.attId) +
+    '?readToken=' + encodeURIComponent(att.readToken || '');
+
+  (async function () {
+    const res = await fetch(fullUrl);
+    if (res.status !== 200) {
+      throw new Error('HTTP ' + res.status + ' ' + (res.statusText || '') +
+        ' while fetching ' + relPath);
+    }
+    const writeStream = writer.openWriteStream(relPath);
+    const reader = res.body.getReader();
+    while (true) {
+      const { done: streamDone, value } = await reader.read();
+      if (streamDone) break;
+      writeStream.write(value);
+    }
+    await endStream(writeStream);
+    await stateStore.markDone(CATEGORY, att.key);
+    log('attachments: wrote ' + relPath);
+  })().then(
+    function () { callback(); },
+    function (err) {
+      log('attachments: ' + relPath + ' — ' + (err.message || err));
+      callback(err);
+    }
+  );
 }
 
-function loadEventFile(connection, backupDir, callback, log) {
-  // Walk every event-data file the backup carries — legacy single-file
-  // `events.json` (older backups) and chunked `events-YYYY-MM.json` (0.5.0+)
-  // and incremental `events-incremental-<TS>.json` (0.6.0+). Prior to this
-  // fix, only the legacy file was streamed; chunked-only backups crashed
-  // immediately with `ENOENT events.json` when `--includeAttachments` was
-  // on — the same regression pattern as the 0.6.0 hf-data fix.
-  const eventFiles = (typeof backupDir.listEventFiles === 'function')
-    ? backupDir.listEventFiles()
-    : (fs.existsSync(backupDir.eventsFile) ? [backupDir.eventsFile] : []);
-  if (eventFiles.length === 0) {
-    log('attachments: skipping (no events-*.json files — events fetch must run first)');
-    return callback(null, []);
-  }
-
-  const attachments = [];
-  log('Parsing events for attachments across ' + eventFiles.length + ' file(s)');
-
-  // --- pretty timed log ---//
-  const timeRepeat = 1000;
-  let total = 0;
-  let done = false;
-  const timeLog = function() {
-    if (done) return;
-    log('Parsed ' +  total + ' events, found ' + attachments.length + ' attachments');
-    setTimeout(timeLog, timeRepeat);
-  }
-  setTimeout(timeLog, timeRepeat);
-
-  function streamOne (i) {
-    if (i >= eventFiles.length) {
-      done = true;
-      log('Found ' + attachments.length + ' attachments');
-      return callback(null, attachments);
-    }
-    fs.createReadStream(eventFiles[i], 'utf8').pipe(
-      JSONStream.parse('events.*').on('data', function(event) {
-        total++;
-        if (event.attachments) {
-          event.attachments.forEach(function (att) {
-            if (att.id) {
-              att.eventId = event.id;
-              att.streamId = event.streamId;
-              attachments.push(att);
-            } else {
-              log('Invalid event: att.id is missing: ' + event);
-            }
-          });
-        }
-      }).on('error', function(error) {
-        done = true;
-        log('Error while fetching attachments: ' + error);
-        callback(error, attachments);
-      }).on('end', function() {
-        streamOne(i + 1);
-      }));
-  }
-  streamOne(0);
-}
-
-
-/**
- * Download attachment file and save it on local storage under
- * {eventId_attachmentFileName}.
- * If the file already exists, it is skipped
- *
- * @param attachmentsDir
- * @param attachment
- * @param callback
- */
-async function getAttachment(connection, backupDir, attachment, callback, log) {
-  const attFile = backupDir.getAttachmentFilePath(attachment.fileName, attachment.eventId, attachment.streamId);
-  if (fs.existsSync(attFile)) {
-    log('Skipping already existing attachment: ' + attFile);
-    return callback();
-  }
-
-  const url = new URL(connection.endpoint)
-
-  const options = {
-    host: url.hostname,
-    port: url.port || 443,
-    path: url.pathname + 'events/' +
-    attachment.eventId + '/' + attachment.id + '?readToken=' + attachment.readToken
-  };
-
-  https.get(options, function (res) {
-    let binData = '';
-    res.setEncoding('binary');
-
-    res.on('data', function (chunk) {
-      binData += chunk;
-    });
-
-    res.on('end', function () {
-      fs.writeFile(attFile, binData, 'binary', function (err) {
-        if (err) {
-          log('Error while writing attachment: ' + attFile);
-          throw err;
-        }
-        log('Attachment saved: ' + attFile);
-        callback();
+function endStream (writeStream) {
+  return new Promise(function (resolve, reject) {
+    if (typeof writeStream.end !== 'function') return resolve();
+    try {
+      writeStream.end(function (err) {
+        if (err) return reject(err);
+        resolve();
       });
-    });
-
-  }).on('error', function (e) {
-    log('Error while fetching https://' + options.host + options.path);
-    callback(e);
+    } catch (e) {
+      reject(e);
+    }
   });
 }
+
+exports.CATEGORY = CATEGORY;

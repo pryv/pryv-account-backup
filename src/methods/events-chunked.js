@@ -48,6 +48,14 @@ exports.download = function download (connection, writer, options, callback, log
   options = options || {};
   const stateAll = options.includeTrashed ? '&state=all' : '';
 
+  // onParsed lift: per-chunk JSON gets re-emitted as the events array. Lets
+  // the orchestrator push attachment / series-event refs to the StateStore
+  // without re-reading files post-fetch.
+  const onEvents = typeof options.onEvents === 'function' ? options.onEvents : null;
+  const onParsed = onEvents
+    ? function (doc) { return onEvents(Array.isArray(doc.events) ? doc.events : []); }
+    : null;
+
   // Incremental mode: single round-trip with modifiedSince.
   if (options.modifiedSince != null) {
     const runTs = options.runStartedAt || Math.floor(Date.now() / 1000);
@@ -59,7 +67,8 @@ exports.download = function download (connection, writer, options, callback, log
       writer: writer,
       resource: resource,
       connection: connection,
-      filename: 'events-incremental-' + runTs + '.json'
+      filename: 'events-incremental-' + runTs + '.json',
+      onParsed: onParsed
     }, callback, log);
     return;
   }
@@ -89,7 +98,8 @@ exports.download = function download (connection, writer, options, callback, log
         writer: writer,
         resource: resource,
         extraFileName: '-' + w.label,
-        connection: connection
+        connection: connection,
+        onParsed: onParsed
       }, function (err) {
         if (err) return callback(err);
         next();

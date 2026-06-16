@@ -19,15 +19,28 @@ const STATE_KEYS = {
   auditLastModifiedSince: 'audit.lastModifiedSince'
 };
 
+const SYNC_STATE_FILE = 'sync-state.json';
+
 /**
  * Backup — the orchestrator that runs a full account dump.
  *
- * Phase A: this class wraps the v0.5.0 `startOnConnection` orchestration so
- * the library has a class entrypoint that consumes pluggable adapters
- * (`StorageWriter` + `StateStore`). Behavior is identical to v0.5.0 — the
- * per-method modules still consume the legacy `BackupDirectory` exposed via
- * the writer's `legacyDirectory()` shim. Phase B will migrate the per-method
- * modules to consume the writer + state directly.
+ * Drives two pluggable adapters: `StorageWriter` (bytes out) +
+ * `StateStore` (kv state + per-category work refs). The same orchestration
+ * runs in both Node and the browser sample webapp.
+ *
+ * Per-resource refs (attachments, series-event, webhook) are PUSHED into the
+ * StateStore during metadata + events fetches via the `onParsed` hook in
+ * `api-resources` (and the `onEvents` lift in `events-chunked`), then DRAINED
+ * by the per-method modules (`attachments.download`, `hf-data.download`,
+ * `webhooks-export.download`). Each successful per-ref download is marked
+ * done in the store so an interrupted run resumes on still-pending refs
+ * rather than re-downloading completed work.
+ *
+ * At run-end the orchestrator writes a portable `sync-state.json` via the
+ * writer — kv state only, no refs. CLI subjects find it in the backup
+ * directory; webapp subjects find it inside the final ZIP. They keep it
+ * alongside their backup; on the next run they re-upload it (webapp) or
+ * the CLI auto-reads it from disk, and incremental thresholds carry over.
  *
  * Typical CLI usage:
  *
@@ -36,20 +49,18 @@ const STATE_KEYS = {
  *   const state = new FolderStateStore(backupDirectory.baseDir);
  *   const backup = new Backup({ connection, writer, state, options });
  *   backup.run((err) => { ... });
- *
- * The CLI's `scripts/start-backup.js` continues to call the legacy
- * `exports.start(params, callback)` API in `src/main.js`, which constructs a
- * `Backup` internally; existing CLI users see no behavior change.
  */
 class Backup {
   /**
    * @param {object} cfg
    * @param {object} cfg.connection         pryv.Connection (logged-in)
    * @param {StorageWriter} cfg.writer      destination adapter
-   * @param {StateStore} [cfg.state]        incremental state (Phase B uses this)
+   * @param {StateStore} [cfg.state]        kv state + work-ref tracker
    * @param {object} [cfg.options]          per-run options
    * @param {boolean} [cfg.options.includeTrashed]
    * @param {boolean} [cfg.options.includeAttachments]
+   * @param {boolean} [cfg.options.includeHfData]
+   * @param {boolean} [cfg.options.includeWebhooks]
    * @param {boolean} [cfg.options.includeAccessHistory]
    * @param {number}  [cfg.options.eventsChunkMonths]
    * @param {number}  [cfg.options.fromTime]
@@ -68,21 +79,24 @@ class Backup {
   }
 
   /**
-   * Run the backup. Mirrors the v0.5.0 `startOnConnection` flow:
+   * Run the backup. Flow:
    *   1. metadata resources (account, streams, accesses + accesses-all,
-   *      profile/private, profile/public, audit/logs)
-   *   2. per-app profile fetches (`/profile/app` per `app`-type access)
-   *   3. events chunked by month (`events-YYYY-MM.json`)
-   *   4. per-access version history (`accesses-history/<id>.json`, opt-in)
-   *   5. attachments (opt-in)
-   *   6. HFS series data points (per `series:*` event)
-   *   7. webhooks per access
-   *   8. integrity manifest
+   *      profile/private, profile/public) — accesses fetch tees webhook refs
+   *      into the store
+   *   2. audit-as-events
+   *   3. events chunked by month (or incremental) — tees attachment +
+   *      series-event refs into the store
+   *   4. per-app profile fetches
+   *   5. per-access version history (opt-in)
+   *   6. attachments drain (opt-in)
+   *   7. HFS series data points drain (opt-in)
+   *   8. webhooks drain (opt-in)
+   *   9. persist sync-state kv + write portable `sync-state.json` via writer
+   *  10. integrity manifest
    *
    * @param {function(Error?)} callback
    */
   run (callback) {
-    const self = this;
     const connection = this.connection;
     const writer = this.writer;
     const state = this.state;
@@ -95,40 +109,94 @@ class Backup {
         'Pass `new NodeFsStorageWriter(backupDirectory)` rather than a bare path.'
       ));
     }
+    if (state == null) {
+      return callback(new Error('Backup requires a StateStore (since v0.7.0). ' +
+        'Pass `new FolderStateStore(backupDirectory.baseDir)`.'));
+    }
 
     const runStartedAt = Math.floor(Date.now() / 1000);
 
-    // Resolve incremental thresholds from prior state. When the state store
-    // is absent OR carries no prior `lastRunAt`, this is the first run on
-    // this backup directory — fall back to the chunked initial-fetch path.
     let eventsModifiedSince = null;
     let auditModifiedSince = null;
     (async function loadIncrementalState () {
-      if (state == null) return;
       const prior = await state.get(STATE_KEYS.lastRunAt);
       if (prior == null) return;
       eventsModifiedSince = await state.get(STATE_KEYS.eventsLastModifiedSince);
       auditModifiedSince = await state.get(STATE_KEYS.auditLastModifiedSince);
-      // Fall back to lastRunAt if a resource-level threshold is missing.
       if (eventsModifiedSince == null) eventsModifiedSince = prior;
       if (auditModifiedSince == null) auditModifiedSince = prior;
     })().then(runOrchestration, callback);
+
+    function pushAttachmentRefs (events) {
+      return Promise.all(events.map(async function (e) {
+        if (!e || !Array.isArray(e.attachments)) return;
+        for (const att of e.attachments) {
+          if (!att || !att.id) continue;
+          await state.pushRef('attachment', {
+            key: e.id + ':' + att.id,
+            eventId: e.id,
+            attId: att.id,
+            fileName: att.fileName || att.id,
+            readToken: att.readToken
+          });
+        }
+      })).then(function () {});
+    }
+
+    function pushSeriesEventRefs (events) {
+      return Promise.all(events.map(async function (e) {
+        if (!e || typeof e.type !== 'string' || e.type.indexOf('series:') !== 0) return;
+        await state.pushRef('series-event', {
+          key: e.id,
+          eventId: e.id,
+          type: e.type
+        });
+      })).then(function () {});
+    }
+
+    function onEventsParsed (events) {
+      return Promise.all([
+        pushAttachmentRefs(events),
+        pushSeriesEventRefs(events)
+      ]).then(function () {});
+    }
+
+    function onAccessesParsed (doc) {
+      const accesses = Array.isArray(doc.accesses) ? doc.accesses : [];
+      return Promise.all(accesses.map(async function (a) {
+        if (!a || typeof a.token !== 'string' || a.token.length === 0) return;
+        await state.pushRef('webhook', {
+          key: a.id,
+          accessId: a.id,
+          token: a.token,
+          type: a.type
+        });
+      })).then(function () {});
+    }
 
     function runOrchestration () {
       async.series([
         function createDirectoryTree (done) {
           backupDirectory.createDirs(done, log);
         },
+        function clearStaleRefs (done) {
+          // Carry-over refs from a prior interrupted run get re-discovered
+          // via the events / accesses streams below; clearing the store
+          // sidesteps "phantom pending" refs whose threshold has since moved.
+          Promise.all([
+            state.clearCategory('attachment'),
+            state.clearCategory('series-event'),
+            state.clearCategory('webhook')
+          ]).then(function () { done(); }, done);
+        },
         function fetchData (done) {
           log('Starting Backup' + (eventsModifiedSince != null ? ' (incremental)' : ' (initial)'));
 
-          // Skip metadata fetch on incremental re-runs — the small resources
-          // get full-refetched below. The skip-on-events-present check is
-          // preserved for backwards compatibility with v0.5.0 partial-rerun
-          // behavior (operator interrupted the first run, restarts with
-          // events already on disk).
           if (eventsModifiedSince == null && backupDirectory.hasEventsData()) {
-            return done();
+            // Operator interrupted an earlier run; events on disk are
+            // preserved. Re-derive accesses-keyed webhook refs from disk so
+            // the drain step still has work to do.
+            return reloadAccessesFromDisk(backupDirectory, onAccessesParsed, log, done);
           }
 
           let streamsRequest = 'streams';
@@ -136,21 +204,22 @@ class Backup {
             streamsRequest += '?state=all';
           }
 
-          // Audit no longer rides this list — it's fetched via
-          // events.get on :_audit:* streams in a dedicated step below so
-          // modifiedSince applies (the dedicated /audit/logs endpoint does
-          // not support modifiedSince and is being removed from the API).
           const accessesAllRequest = 'accesses?includeDeletions=true&includeExpired=true';
-          async.mapSeries([
-            'account', streamsRequest, 'accesses', accessesAllRequest,
-            'profile/private', 'profile/public'
-          ], function (resource, cb) {
-            const extra = resource === accessesAllRequest ? '-all' : '';
+          const resources = [
+            { res: 'account' },
+            { res: streamsRequest },
+            { res: 'accesses', onParsed: onAccessesParsed },
+            { res: accessesAllRequest, extra: '-all' },
+            { res: 'profile/private' },
+            { res: 'profile/public' }
+          ];
+          async.mapSeries(resources, function (item, cb) {
             apiResources.toJSONFile({
               writer: writer,
-              resource: resource,
-              extraFileName: extra,
-              connection: connection
+              resource: item.res,
+              extraFileName: item.extra || '',
+              connection: connection,
+              onParsed: item.onParsed
             }, cb, log);
           }, done);
         },
@@ -167,13 +236,11 @@ class Backup {
             runStartedAt: runStartedAt,
             fromTime: params.fromTime,
             toTime: params.toTime,
-            chunkMonths: params.eventsChunkMonths
+            chunkMonths: params.eventsChunkMonths,
+            onEvents: onEventsParsed
           }, stepDone, log);
         },
         function fetchAppProfiles (stepDone) {
-          // The per-app-profile fetches go into the `app_profiles/`
-          // subdirectory; api-resources writes via the writer, which routes
-          // the relative path under baseDir.
           const accessesData = JSON.parse(fs.readFileSync(backupDirectory.accessesFile, 'utf8'));
           async.mapSeries(accessesData.accesses, function (access, cb) {
             if (access.type !== 'app') return cb();
@@ -191,40 +258,51 @@ class Backup {
             log('Skipping per-access version history (opt-in)');
             return stepDone();
           }
-          // Pass the accesses array explicitly so accesses-history doesn't
-          // need to read disk — keeps the per-method module browser-friendly.
           const accessesData = JSON.parse(fs.readFileSync(backupDirectory.accessesFile, 'utf8'));
           accessesHistory.download(connection, writer, accessesData.accesses || [], stepDone, log);
         },
-        function fetchAttachments (stepDone) {
-          if (params.includeAttachments) {
-            attachments.download(connection, backupDirectory, stepDone, log);
-          } else {
+        function drainAttachments (stepDone) {
+          if (!params.includeAttachments) {
             log('Skipping attachments');
-            stepDone();
+            return stepDone();
           }
+          attachments.download(connection, writer, state, {}, stepDone, log);
         },
-        function fetchHFData (stepDone) {
-          hfData.download(connection, backupDirectory, stepDone, log);
+        function drainHfData (stepDone) {
+          if (params.includeHfData === false) {
+            log('Skipping HFS series data (opt-out)');
+            return stepDone();
+          }
+          hfData.download(connection, writer, state, {}, stepDone, log);
         },
-        function fetchWebhooks (stepDone) {
-          webhooksExport.download(connection, backupDirectory, stepDone, log);
+        function drainWebhooks (stepDone) {
+          if (params.includeWebhooks === false) {
+            log('Skipping webhooks (opt-out)');
+            return stepDone();
+          }
+          webhooksExport.download(connection, writer, state, {}, stepDone, log);
         },
         function persistRunState (stepDone) {
-          if (state == null) return stepDone();
-          // Persist incremental thresholds for the next run. Use the
-          // run-start timestamp as the threshold — events / audit modified
-          // strictly after `runStartedAt` will be picked up next time.
-          // Conservative: re-fetch any event modified DURING the run (a small
-          // overlap is harmless; missing one is not).
-          (async () => {
+          (async function () {
             await state.set(STATE_KEYS.formatVersion, STATE_FORMAT_VERSION);
             await state.set(STATE_KEYS.toolVersion, pkg.version);
             await state.set(STATE_KEYS.lastRunAt, runStartedAt);
             await state.set(STATE_KEYS.eventsLastModifiedSince, runStartedAt);
             await state.set(STATE_KEYS.auditLastModifiedSince, runStartedAt);
             await state.flush();
-          })().then(() => stepDone(), stepDone);
+          })().then(function () { stepDone(); }, stepDone);
+        },
+        function writeSyncStateFile (stepDone) {
+          (async function () {
+            const snapshot = await state.export();
+            const body = JSON.stringify(snapshot, null, 2);
+            const ws = writer.openWriteStream(SYNC_STATE_FILE);
+            ws.write(body);
+            await new Promise(function (resolve, reject) {
+              if (typeof ws.end !== 'function') return resolve();
+              ws.end(function (err) { err ? reject(err) : resolve(); });
+            });
+          })().then(function () { stepDone(); }, stepDone);
         },
         function writeManifest (stepDone) {
           manifest.generate(backupDirectory.baseDir, { version: pkg.version, log }, stepDone);
@@ -242,5 +320,20 @@ class Backup {
 
 Backup.STATE_FORMAT_VERSION = STATE_FORMAT_VERSION;
 Backup.STATE_KEYS = STATE_KEYS;
+Backup.SYNC_STATE_FILE = SYNC_STATE_FILE;
 
 module.exports = Backup;
+
+function reloadAccessesFromDisk (backupDirectory, onParsed, log, callback) {
+  if (!fs.existsSync(backupDirectory.accessesFile)) {
+    log('No accesses.json on disk — skipping webhook-ref reload.');
+    return callback();
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(backupDirectory.accessesFile, 'utf8'));
+  } catch (err) {
+    return callback(err);
+  }
+  Promise.resolve(onParsed(parsed)).then(function () { callback(); }, callback);
+}

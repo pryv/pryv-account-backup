@@ -9,6 +9,9 @@ const apiResources = require('../../src/methods/api-resources');
 const eventsChunked = require('../../src/methods/events-chunked');
 const auditAsEvents = require('../../src/methods/audit-as-events');
 const accessesHistory = require('../../src/methods/accesses-history');
+const attachments = require('../../src/methods/attachments');
+const webhooksExport = require('../../src/methods/webhooks-export');
+const FolderStateStore = require('../../src/lib/adapters/FolderStateStore');
 
 /**
  * [PALI] — Library Isomorphism contract: the four browser-portable per-method
@@ -214,6 +217,303 @@ describe('[PALI] library isomorphism contract', function () {
         function (err) {
           should.not.exist(err);
           writeCalls.length.should.equal(0);
+          done();
+        },
+        () => {}
+      );
+    });
+  });
+
+  // ─── [PALI-A] attachments.download drains the `attachment` category ───
+
+  describe('[PALI-A] attachments.download', function () {
+    let storeDir;
+    let store;
+
+    beforeEach(function () {
+      storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-a-'));
+      store = new FolderStateStore(storeDir);
+      // Binary attachments: stub fetch to return a fixed payload.
+      global.fetch = function (url) {
+        const payload = new TextEncoder().encode('PNG-bytes-for-' + url);
+        let yielded = false;
+        return Promise.resolve({
+          status: 200,
+          statusText: 'OK',
+          body: {
+            getReader () {
+              return {
+                read () {
+                  if (yielded) return Promise.resolve({ done: true });
+                  yielded = true;
+                  return Promise.resolve({ done: false, value: payload });
+                }
+              };
+            }
+          }
+        });
+      };
+    });
+
+    afterEach(function () {
+      fs.rmSync(storeDir, { recursive: true, force: true });
+    });
+
+    it('throws synchronously when StateStore is missing', function () {
+      (() => attachments.download(
+        { endpoint: 'https://x/', token: 't' },
+        fakeWriter,
+        null,
+        {},
+        () => {},
+        () => {}
+      )).should.throw(/StateStore/);
+    });
+
+    it('throws synchronously when writer is missing', function () {
+      (() => attachments.download(
+        { endpoint: 'https://x/', token: 't' },
+        null,
+        store,
+        {},
+        () => {},
+        () => {}
+      )).should.throw(/StorageWriter/);
+    });
+
+    it('writes one attachments/<eid>_<fileName> per pending ref + marks each done', async function () {
+      await store.pushRef('attachment', {
+        key: 'e1:a1', eventId: 'e1', attId: 'a1', fileName: 'photo.png', readToken: 'rt1'
+      });
+      await store.pushRef('attachment', {
+        key: 'e1:a2', eventId: 'e1', attId: 'a2', fileName: 'doc.pdf', readToken: 'rt2'
+      });
+
+      await new Promise((resolve, reject) => {
+        attachments.download(
+          { endpoint: 'https://token@host.example.com/', token: 't' },
+          fakeWriter,
+          store,
+          {},
+          (err) => err ? reject(err) : resolve(),
+          () => {}
+        );
+      });
+
+      const paths = writeCalls.map((w) => w.path).sort();
+      paths.should.eql(['attachments/e1_doc.pdf', 'attachments/e1_photo.png']);
+      (await store.listPending('attachment')).should.eql([]);
+    });
+
+    it('writes nothing when no refs are pending', async function () {
+      await new Promise((resolve, reject) => {
+        attachments.download(
+          { endpoint: 'https://token@host.example.com/', token: 't' },
+          fakeWriter,
+          store,
+          {},
+          (err) => err ? reject(err) : resolve(),
+          () => {}
+        );
+      });
+      writeCalls.length.should.equal(0);
+    });
+  });
+
+  // ─── [PALI-W] webhooks-export.download drains the `webhook` category ───
+
+  describe('[PALI-W] webhooks-export.download', function () {
+    let storeDir;
+    let store;
+    let fetchUrls;
+
+    beforeEach(function () {
+      storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-w-'));
+      store = new FolderStateStore(storeDir);
+      fetchUrls = [];
+      global.fetch = function (url) {
+        fetchUrls.push(url);
+        return Promise.resolve({
+          status: 200,
+          json: () => Promise.resolve({ webhooks: [{ id: 'wh-' + fetchUrls.length, url: 'https://hook' }] })
+        });
+      };
+    });
+
+    afterEach(function () {
+      fs.rmSync(storeDir, { recursive: true, force: true });
+    });
+
+    it('hits /webhooks once per pending access ref + tags each result with accessId', async function () {
+      await store.pushRef('webhook', { key: 'acc-1', accessId: 'acc-1', token: 'tok-1', type: 'app' });
+      await store.pushRef('webhook', { key: 'acc-2', accessId: 'acc-2', token: 'tok-2', type: 'shared' });
+
+      await new Promise((resolve, reject) => {
+        webhooksExport.download(
+          { endpoint: 'https://token@host.example.com/', token: 't' },
+          fakeWriter,
+          store,
+          {},
+          (err) => err ? reject(err) : resolve(),
+          () => {}
+        );
+      });
+
+      fetchUrls.length.should.equal(2);
+      writeCalls.length.should.equal(1);
+      writeCalls[0].path.should.equal('webhooks.json');
+      const body = JSON.parse(writeCalls[0].chunks.map((b) => Buffer.from(b).toString()).join(''));
+      body.accesses_scanned.should.equal(2);
+      body.webhooks.length.should.equal(2);
+      body.webhooks.map((w) => w.accessId).sort().should.eql(['acc-1', 'acc-2']);
+      (await store.listPending('webhook')).should.eql([]);
+    });
+
+    it('still writes a bundle when no accesses are scannable', async function () {
+      await new Promise((resolve, reject) => {
+        webhooksExport.download(
+          { endpoint: 'https://token@host.example.com/', token: 't' },
+          fakeWriter,
+          store,
+          {},
+          (err) => err ? reject(err) : resolve(),
+          () => {}
+        );
+      });
+      writeCalls.length.should.equal(1);
+      writeCalls[0].path.should.equal('webhooks.json');
+      const body = JSON.parse(writeCalls[0].chunks.map((b) => Buffer.from(b).toString()).join(''));
+      body.accesses_scanned.should.equal(0);
+      body.webhooks.should.eql([]);
+    });
+  });
+
+  // ─── [PALI-S] api-resources onParsed tee + events-chunked onEvents lift ───
+
+  describe('[PALI-S] api-resources onParsed hook', function () {
+    let receivedDoc;
+
+    beforeEach(function () {
+      receivedDoc = null;
+      // Stream-style fetch with a parseable JSON body.
+      global.fetch = function () {
+        const payload = new TextEncoder().encode(JSON.stringify({
+          accesses: [{ id: 'acc-1', token: 'tok' }],
+          meta: { v: 1 }
+        }));
+        let yielded = false;
+        return Promise.resolve({
+          status: 200,
+          statusText: 'OK',
+          body: {
+            getReader () {
+              return {
+                read () {
+                  if (yielded) return Promise.resolve({ done: true });
+                  yielded = true;
+                  return Promise.resolve({ done: false, value: payload });
+                }
+              };
+            }
+          }
+        });
+      };
+    });
+
+    it('tees response bytes + parses + invokes onParsed when supplied', function (done) {
+      apiResources.toJSONFile({
+        writer: fakeWriter,
+        resource: 'accesses',
+        connection: { endpoint: 'https://token@host.example.com/', token: 't' },
+        onParsed: (doc) => { receivedDoc = doc; }
+      }, function (err) {
+        should.not.exist(err);
+        receivedDoc.should.not.equal(null);
+        receivedDoc.accesses[0].id.should.equal('acc-1');
+        receivedDoc.meta.v.should.equal(1);
+        // Bytes still flowed to the writer.
+        writeCalls.length.should.equal(1);
+        done();
+      }, () => {});
+    });
+
+    it('skips onParsed silently when the body is not valid JSON', function (done) {
+      global.fetch = function () {
+        const payload = new TextEncoder().encode('{not valid json');
+        let yielded = false;
+        return Promise.resolve({
+          status: 200,
+          body: {
+            getReader () {
+              return {
+                read () {
+                  if (yielded) return Promise.resolve({ done: true });
+                  yielded = true;
+                  return Promise.resolve({ done: false, value: payload });
+                }
+              };
+            }
+          }
+        });
+      };
+      apiResources.toJSONFile({
+        writer: fakeWriter,
+        resource: 'accesses',
+        connection: { endpoint: 'https://x/', token: 't' },
+        onParsed: (doc) => { receivedDoc = doc; }
+      }, function (err) {
+        should.not.exist(err);
+        should(receivedDoc).equal(null); // unparseable → onParsed not called
+        done();
+      }, () => {});
+    });
+  });
+
+  describe('[PALI-S] events-chunked onEvents lift', function () {
+    let receivedBatches;
+
+    beforeEach(function () {
+      receivedBatches = [];
+      global.fetch = function () {
+        const payload = new TextEncoder().encode(JSON.stringify({
+          events: [
+            { id: 'e1', type: 'note/txt' },
+            { id: 'e2', type: 'series:mass/kg' }
+          ]
+        }));
+        let yielded = false;
+        return Promise.resolve({
+          status: 200,
+          body: {
+            getReader () {
+              return {
+                read () {
+                  if (yielded) return Promise.resolve({ done: true });
+                  yielded = true;
+                  return Promise.resolve({ done: false, value: payload });
+                }
+              };
+            }
+          }
+        });
+      };
+    });
+
+    it('forwards parsed events to onEvents in incremental mode', function (done) {
+      eventsChunked.download(
+        { endpoint: 'https://token@host.example.com/', token: 't' },
+        fakeWriter,
+        {
+          modifiedSince: 1700000000,
+          runStartedAt: 1700100000,
+          onEvents: (events) => { receivedBatches.push(events); }
+        },
+        function (err) {
+          should.not.exist(err);
+          receivedBatches.length.should.equal(1);
+          receivedBatches[0].length.should.equal(2);
+          receivedBatches[0][0].id.should.equal('e1');
+          receivedBatches[0][1].type.should.equal('series:mass/kg');
           done();
         },
         () => {}

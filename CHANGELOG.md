@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.7.0 — UNRELEASED — Attachments / HFS / webhooks now browser-isomorphic; portable `sync-state.json`
+
+Closes the v0.6.0 webapp coverage gap. The three remaining Node-only resource fetchers (`attachments`, `hf-data`, `webhooks-export`) are refactored to the same `fetch` + `StorageWriter` shape as the v0.6.0 four. The sample browser webapp now offers attachments / HFS / webhooks toggles + a downloadable `sync-state.json` for true cross-session incremental backups.
+
+### Architecture: per-category work refs in the `StateStore`
+
+The `StateStore` interface gains a small ref-tracker on top of the existing kv state:
+
+- `pushRef(category, ref)` — idempotent on `ref.key`; refs carry arbitrary opaque payloads (`{ eventId, attId, fileName, readToken }` for `attachment`, `{ eventId, type }` for `series-event`, `{ accessId, token, type }` for `webhook`)
+- `listPending(category)`, `markDone(category, refKey)`, `clearCategory(category)`
+- `export()` returns a portable JSON snapshot of the kv state (refs deliberately excluded — they are per-run working data)
+- `import(data)` replaces the kv state from a prior `export()` snapshot
+
+Refs flow:
+
+1. **Discover** — `api-resources.toJSONFile` gains an opt-in `onParsed(doc)` tee: when supplied, response bytes are accumulated alongside writing and JSON-decoded at end-of-stream. `events-chunked.download` lifts that into `onEvents(events[])`. The orchestrator wires both hooks to push `attachment` + `series-event` refs (from events) and `webhook` refs (from accesses) into the store as each window streams by.
+2. **Drain** — `attachments.download(connection, writer, stateStore, options, cb, log)`, `hf-data.download(...)`, `webhooks-export.download(...)` all read pending refs from `stateStore.listPending(<category>)`, fetch + write each through the StorageWriter, and call `markDone(<category>, ref.key)` per success. An interrupted run resumes on still-pending refs rather than re-downloading completed work.
+
+### Portable `sync-state.json`
+
+At run-end the orchestrator writes a portable `sync-state.json` via the writer:
+
+```json
+{
+  "format": "pryv-account-backup-sync-state",
+  "formatVersion": 1,
+  "toolVersion": "0.7.0",
+  "createdAt": "<ISO-8601>",
+  "kv": {
+    "lastRunAt": <UTC-sec>,
+    "events.lastModifiedSince": <UTC-sec>,
+    "audit.lastModifiedSince": <UTC-sec>,
+    "formatVersion": 1,
+    "toolVersion": "0.7.0"
+  }
+}
+```
+
+- **CLI:** the file lands in the backup directory alongside the chunked events / accesses / webhooks output. The companion `.sync-state.json` (hidden) keeps the operational store (kv + refs) for the next run; the unhidden `sync-state.json` is the portable artefact.
+- **Browser webapp:** the file is included inside the final ZIP. The subject keeps it alongside the ZIPs and re-uploads it at the start of the next visit; the webapp's pre-login state panel offers the upload, and seeds the store via `import()` so subsequent incremental thresholds carry over even when localStorage is cleared / a different browser is used.
+
+### Added
+
+- **`StateStore` ref tracker + portable export/import** — interface methods documented above; implemented in `FolderStateStore` (Node) with eager file flush. The webapp's `LocalStorageStateStore` mirrors the same interface verbatim.
+- **`attachments.download` browser-isomorphic** — `fetch(<endpoint>/events/<eid>/<attId>?readToken=<rt>)` + `writer.openWriteStream('attachments/<eventId>_<fileName>')`, piped chunk-by-chunk so multi-GB attachments stream through bounded memory in both flavors. Drains refs from `stateStore.listPending('attachment')`; per-download `markDone` enables mid-run resume.
+- **`hf-data.download` browser-isomorphic** — `fetch(<endpoint>/events/<eid>/series)` + `writer.openWriteStream('hf-data/<eid>.json')`. Empty-series 4xx responses are silently marked done so the ref doesn't re-queue indefinitely.
+- **`webhooks-export.download` browser-isomorphic** — `fetch(<endpoint>/webhooks)` per access from `stateStore.listPending('webhook')`, aggregated into `webhooks.json`. 401 / 403 on expired tokens is non-fatal.
+- **`api-resources.onParsed` tee** — opt-in callback that accumulates response bytes alongside writing and JSON-decodes at end of stream. Memory cost O(body size) — acceptable for chunked-events (≤100 MB / file) and accesses payloads; do not enable for legacy multi-GB single-file fetches.
+- **`events-chunked.onEvents` lift** — passes `onParsed` through to `api-resources` and re-emits the parsed `events` array.
+- **Migration from pre-v0.7.0 `.state.json`** — `FolderStateStore` auto-loads kv values from the legacy flat-object file on first construction. Next write lands in `.sync-state.json`; the legacy file is left untouched.
+- **Adapter ref-tracking tests, isomorphism contract tests for the three new modules, and `api-resources.onParsed` / `events-chunked.onEvents` tests** — 16 new unit tests; total suite now 81 passing.
+
+### Removed
+
+- **`JSONStream` dependency** — `attachments.js` was its only consumer; the refactor walks events from in-memory arrays passed by the orchestrator, so the streaming JSON parser is no longer needed. Closes 3 transitive packages.
+
+### Changed
+
+- **Attachment file layout simplified** — output is always `attachments/<eventId>_<fileName>` (flat). The opt-in stream-path-mirrored layout (`attachments/<streamPath>/<eventId>_<fileName>` via `BackupDirectory.settingAttachmentUseStreamsPath`) is dropped — the previous implementation referenced an undeclared helper and would throw on the first attachment whose `streamId` matched a top-level stream. Stream-path metadata is recoverable from `events*.json` + `streams.json` if a consumer needs the old layout.
+- **`Backup.run` now requires a `StateStore`** — pre-v0.7.0 the orchestrator tolerated `state: null` and still ran (in non-incremental mode). v0.7.0 raises a clear error: pass `new FolderStateStore(backupDirectory.baseDir)`. The store is also where per-run refs live, so the orchestration can't drain without it.
+- **`accesses-history.download` signature unchanged** (still takes the in-memory accesses array passed by the orchestrator) — this module's payload sequencing was already incompatible with the per-category ref pattern (one fetch per ref produces independent files; queue semantics add no value).
+- **CLI behavior unchanged from the operator's perspective.** `scripts/start-backup.js` still prompts the same questions; the orchestration delegates to the new `Backup` class internally.
+
+### Compatibility
+
+- A 0.6.0 backup directory's `.state.json` is auto-migrated to `.sync-state.json` on the next 0.7.0 run; kv values are preserved.
+- The `sync-state.json` schema version is `1`. Future versions will bump `formatVersion` and the `StateStore.import(data)` method will reject unsupported versions with a clear error message.
+- 0.6.0 `events-YYYY-MM.json`, `audit_logs.json`, `accesses.json`, `accesses-all.json`, `accesses-history/<id>.json` content shapes are byte-identical in 0.7.0.
+- The CLI's `require('@pryv/account-backup').start(params, callback)` API is preserved verbatim.
+
+### Operator security note (unchanged)
+
+The backup bundle still includes `profile_private.json` with `profile.mfa = { content, recoveryCodes }`. Treat the disclosure as a password-reset-equivalent secret; transport securely; consider rotating recovery codes after the run completes.
+
 ## 0.6.0 — UNRELEASED — Library + CLI split, incremental backup, audit-as-events, browser-isomorphic core
 
 Architectural rewrite around a programmatic library API (`require('@pryv/account-backup').Backup`) consuming pluggable adapters (`StorageWriter` + `StateStore`). The core resource-fetch modules are browser-isomorphic — `fetch` for HTTP, `StorageWriter.openWriteStream` for output. The CLI is preserved as a thin shim; behavior is byte-identical to 0.5.0 on a first run against a fresh backup directory. A sibling `pryv-account-backup-webapp` repository ships the browser-side adapter pair + sample UI.
