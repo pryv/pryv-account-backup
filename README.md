@@ -5,7 +5,12 @@
 [![Coverage Status](https://coveralls.io/repos/github/pryv/pryv-account-backup/badge.svg?branch=master)](https://coveralls.io/github/pryv/pryv-account-backup?branch=master)
 -->
 
-Simple script to backup your Pryv.io data
+Simple script to backup your Pryv.io data — also a programmatic library consumed by the operator-hosted sample web app [`pryv-account-backup-webapp`](https://github.com/pryv/pryv-account-backup-webapp) when non-technical subjects need a one-click "Start backup" UX.
+
+Two flavors, one library:
+
+- **CLI** (`npm start`) — this repo. Canonical flavor; produces a folder of JSON + binary files plus a per-file sha256 integrity manifest for third-party auditors.
+- **Sample web app** — [`pryv-account-backup-webapp`](https://github.com/pryv/pryv-account-backup-webapp). Operator-hosted; subjects log in via a form and download a series of subject-portable ZIP files. Same coverage as the CLI minus the auditor-facing manifest.
 
 ## Script Usage
 
