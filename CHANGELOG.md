@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.7.0 — UNRELEASED — Attachments / HFS / webhooks now browser-isomorphic; portable `sync-state.json`
+## 0.7.1 — Stable re-tag of the browser-isomorphic drainers
+
+No source changes versus 0.7.0 — this is a clean, immutable release tag so
+downstream consumers (the sample `pryv-account-backup-webapp`) can pin a stable
+reference. The `v0.7.0` tag was moved after its initial cut, which left
+downstream lockfiles pinned to a **pre-isomorphic** commit (the old Node-`fs`
+`attachments` / `hf-data` / `webhooks-export` drainers), breaking the browser
+build. `v0.7.1` is a fixed point that will not drift; consumers should pin it.
+
+## 0.7.0 — Attachments / HFS / webhooks now browser-isomorphic; portable `sync-state.json`
 
 Closes the v0.6.0 webapp coverage gap. The three remaining Node-only resource fetchers (`attachments`, `hf-data`, `webhooks-export`) are refactored to the same `fetch` + `StorageWriter` shape as the v0.6.0 four. The sample browser webapp now offers attachments / HFS / webhooks toggles + a downloadable `sync-state.json` for true cross-session incremental backups.
 
