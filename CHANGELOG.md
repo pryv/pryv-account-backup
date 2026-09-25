@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Development dependencies: lockfile refresh clears 3 high and 1 moderate advisory in
+  test-only transitive packages (`js-yaml` via mocha, `form-data` and `qs` via
+  superagent). No runtime dependency changes.
+
 ## 0.7.1 — Stable re-tag of the browser-isomorphic drainers
 
 No source changes versus 0.7.0 — this is a clean, immutable release tag so
