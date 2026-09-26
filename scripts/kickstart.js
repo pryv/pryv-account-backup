@@ -1,3 +1,7 @@
+/**
+ * @license
+ * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
+ */
 /*
  * This file serves for debugging purpose.
  * It will launch a backup task without asking the user all the requested information

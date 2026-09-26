@@ -1,4 +1,8 @@
 /**
+ * @license
+ * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
+ */
+/**
  * Change the dates in the backup
  */
 

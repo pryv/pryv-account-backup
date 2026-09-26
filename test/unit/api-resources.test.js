@@ -1,3 +1,7 @@
+/**
+ * @license
+ * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
+ */
 /*global describe, it, before, after */
 
 const api = require('../../src/methods/api-resources');
@@ -20,16 +24,16 @@ describe('api-resources', function () {
         };
 
     before(function (done) {
-        const service = new Pryv.Service(credentials.serviceInfoUrl); 
+        if (!testuser.requireLiveAccount(this, 'api-resources')) return;
+        const service = new Pryv.Service(credentials.serviceInfoUrl);
         async.series([
           function login(stepDone) {
-            service.login(credentials.username, credentials.password, 'bkp-test').then((conn, err) => { 
-              if (err) return stepDone(err);
+            service.login(credentials.username, credentials.password, 'bkp-test').then((conn) => {
               params.connection = conn;
               BackupDirectory = new Directory(conn.endpoint);
               params.folder = BackupDirectory.baseDir;
               stepDone();
-            });
+            }, stepDone);
           },
           function deleteDirectories(stepDone) {
             BackupDirectory.deleteDirs(stepDone);
@@ -40,6 +44,7 @@ describe('api-resources', function () {
     });
 
     after(function (done) {
+        if (!BackupDirectory) return done();
         BackupDirectory.deleteDirs(done);
     });
 

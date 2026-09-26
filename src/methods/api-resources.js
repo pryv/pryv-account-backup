@@ -1,4 +1,8 @@
 /**
+ * @license
+ * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
+ */
+/**
  * Streamed Pryv API resource → file writer.
  *
  * Pure isomorphic since v0.6.0:

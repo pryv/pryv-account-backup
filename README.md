@@ -135,12 +135,28 @@ Restore is **CLI-only** + marked experimental — `audit`, `webhooks`, and `acce
 
 ## Contribute
 
-Prerequisites: Node v8+
+Prerequisites: Node v18+
 
 Install dependencies: `npm install`
 
 Run tests: `npm run test`
 
+### Running the tests
+
+Most tests run offline. The acceptance tests and a few unit suites (`backup`, `backup-directory`, `api-resources`, `attachments`) sign in to a real Pryv.io platform, and need an existing test account given through environment variables:
+
+| Variable | Meaning |
+| --- | --- |
+| `PRYV_BACKUP_TEST_USERNAME` | username of the test account (required) |
+| `PRYV_BACKUP_TEST_PASSWORD` | password of the test account (required) |
+| `PRYV_BACKUP_TEST_SERVICE_INFO_URL` | service info URL of the platform (default `https://reg.pryv.me/service/info`) |
+
+```bash
+PRYV_BACKUP_TEST_USERNAME=my-test-user PRYV_BACKUP_TEST_PASSWORD=... npm test
+```
+
+When the username or password is unset, those suites are skipped (reported as pending) with a notice naming the variables. Use a dedicated test account: the tests read its data and write a backup to the local `backup/` folder.
+
 ## License
 
-MIT License as included
+[BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)

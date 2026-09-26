@@ -1,4 +1,8 @@
 /**
+ * @license
+ * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
+ */
+/**
  * Legacy library entry — preserved for the v0.4.0+ callback-style API:
  *
  *   const backup = require('pryv-backup');
@@ -51,12 +55,16 @@ async function signInToPryv (context) {
  * @param callback {function}
  */
 exports.start = function (params, callback) {
-  signInToPryv(params).then(function (connection, err) {
-    if (err) {
-      console.log('Connection failed with Error:', err);
-      return callback(err);
+  signInToPryv(params).then(function (connection) {
+    // A synchronous throw here would otherwise be an unhandled rejection.
+    try {
+      startOnConnection(connection, params, callback);
+    } catch (err) {
+      callback(err);
     }
-    startOnConnection(connection, params, callback);
+  }, function (err) {
+    console.log('Connection failed with Error:', err);
+    callback(err);
   });
 };
 

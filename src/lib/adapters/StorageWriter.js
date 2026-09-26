@@ -1,4 +1,8 @@
 /**
+ * @license
+ * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
+ */
+/**
  * StorageWriter — interface for writing backup files.
  *
  * The library is consumed in two flavors:

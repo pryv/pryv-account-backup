@@ -102,7 +102,7 @@ drain step      │ attachments.download │  fetch + write + markDone
 ## Build + test cadence
 
 - `npm install && npm test` runs the credential-free unit suite (Mocha). The CI is currently dormant (`.travis.yml` is stale; no GitHub Actions yet). Add or update CI as a separate concern when needed.
-- Integration tests (`test/unit/api-resources.test.js`, `test/unit/attachments.test.js`, `test/unit/backup-directory.test.js`) require a Pryv account configured in `test/helpers/testuser.js` — they are not currently part of `npm test` because they need credentials.
+- Live-account tests (`test/acceptance/backup.test.js`, `test/unit/api-resources.test.js`, `test/unit/attachments.test.js`, `test/unit/backup-directory.test.js`) are part of `npm test` but skip, with a notice, unless `PRYV_BACKUP_TEST_USERNAME` and `PRYV_BACKUP_TEST_PASSWORD` (optionally `PRYV_BACKUP_TEST_SERVICE_INFO_URL`) name an account; see the README's "Running the tests".
 - `npx mocha test/unit/events-chunked.test.js test/unit/manifest.test.js test/unit/adapters.test.js test/unit/incremental.test.js test/unit/isomorphism.test.js` runs the v0.5.0/v0.6.0 unit suites that ship without credentials.
 
 ## Distribution
