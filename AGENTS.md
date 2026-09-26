@@ -112,7 +112,7 @@ drain step      │ attachments.download │  fetch + write + markDone
 
 ## Operator security note
 
-`profile_private.json` carries `profile.mfa = { content, recoveryCodes }` verbatim when MFA is enabled. The 10 recovery codes can bypass the SMS challenge to deactivate MFA, and `content` may carry the subject's phone number. **Treat the backup as a secret on par with a password-reset link** — transport over a secure channel, document destruction policy, and consider rotating recovery codes after the disclosure. This applies to BOTH CLI and webapp output.
+`profile_private.json` carries the MFA enrolment as the core's private-profile read returns it: `profile.mfa = { method, content, totp: { confirmedAt, algorithm, digits, periodSeconds } }`, where `content` may carry the subject's phone number. No usable MFA secret is exported: the core keeps the TOTP secret encrypted and the recovery codes hashed (older cores exported the encrypted secret and the hashes, unusable outside the core). The bundle is still the subject's whole account: **treat it as confidential personal data**, transport over a secure channel and document a destruction policy. This applies to BOTH CLI and webapp output.
 
 ## Companion repos
 
