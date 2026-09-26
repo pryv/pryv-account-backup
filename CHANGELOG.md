@@ -5,6 +5,13 @@
 - Development dependencies: lockfile refresh clears 3 high and 1 moderate advisory in
   test-only transitive packages (`js-yaml` via mocha, `form-data` and `qs` via
   superagent). No runtime dependency changes.
+- Tests: the live-platform test account is now read from `PRYV_BACKUP_TEST_USERNAME`,
+  `PRYV_BACKUP_TEST_PASSWORD` and `PRYV_BACKUP_TEST_SERVICE_INFO_URL` (default
+  `https://reg.pryv.me/service/info`); no credentials are committed any more. When the
+  account is not configured, the suites that need it are skipped with a notice instead
+  of timing out, and a failed sign-in now fails the hook with the real error.
+- `start()`: a failed sign-in now reaches the callback as an error instead of leaving an
+  unhandled promise rejection and never calling back.
 
 ## 0.7.1 — Stable re-tag of the browser-isomorphic drainers
 

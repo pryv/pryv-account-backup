@@ -18,6 +18,7 @@ describe('backup', function () {
   let connection = null;
 
   before(function (done) {
+    if (!testuser.requireLiveAccount(this, 'backup')) return;
     settings = {
       username: credentials.username,
       serviceInfoUrl: credentials.serviceInfoUrl,
@@ -38,17 +39,16 @@ describe('backup', function () {
     // separate modules and checked further down.
     resources = ['account', streamsRequest, 'accesses', 'profile/public', eventsRequest];
 
-    backup.signInToPryv(settings).then((conn, err) => { 
-      if (err) return done(err);
+    backup.signInToPryv(settings).then((conn) => {
       connection = conn;
       settings.backupDirectory = new backup.Directory(connection.endpoint);
       settings.backupDirectory.deleteDirs(done);
-    });
-  
+    }, done);
   });
 
   after(function (done) {
-    if (settings.backupDirectory) settings.backupDirectory.deleteDirs(done);
+    if (!settings || !settings.backupDirectory) return done();
+    settings.backupDirectory.deleteDirs(done);
   });
 
   it('[SBTC] should backup the correct folders and files', function (done) {
@@ -97,8 +97,8 @@ describe('backup', function () {
                     if (outputFilename === 'profile_public') {
                       outputFilename = 'profile';
                     }
-                    
-                    
+
+
                     if(outputFilename === 'accesses') {
                       const expected = json[outputFilename];
                       const actual = result.body[outputFilename];
@@ -114,7 +114,7 @@ describe('backup', function () {
                         }
                       });
                     }
-                    
+
                     // find a way to test content
                     callback();
                   })

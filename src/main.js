@@ -51,12 +51,11 @@ async function signInToPryv (context) {
  * @param callback {function}
  */
 exports.start = function (params, callback) {
-  signInToPryv(params).then(function (connection, err) {
-    if (err) {
-      console.log('Connection failed with Error:', err);
-      return callback(err);
-    }
+  signInToPryv(params).then(function (connection) {
     startOnConnection(connection, params, callback);
+  }, function (err) {
+    console.log('Connection failed with Error:', err);
+    callback(err);
   });
 };
 
