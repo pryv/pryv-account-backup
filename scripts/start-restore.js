@@ -1,3 +1,7 @@
+/**
+ * @license
+ * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
+ */
 const fs = require('fs');
 const path = require('path');
 const async = require('async');
@@ -47,11 +51,11 @@ async.series([
     });
   },
   function checkServiceInfo (done) {
-    context.service.info().then(function (result, err) {
+    context.service.info().then(function (result) {
       context.info = result;
       console.log('Ready to login service: ' + context.info.name);
-      done(err);
-    });
+      done();
+    }, done);
   }
   , function inputUsername (done) {
     readP({ prompt: 'Username : ', silent: false }, function (err, username) {
@@ -66,19 +70,20 @@ async.series([
     });
   },
   function login (done) {
-    context.service.login(context.username, context.password, 'restore-bkp').then(function (connection, err) {
+    context.service.login(context.username, context.password, 'restore-bkp').then(function (connection) {
       context.connection = connection;
-      done(err);
-    });
+      done();
+    }, done);
   },
   function doRestore (done) {
     console.log('starting restore');
-    restore(context.connection, context.backupSource).then(function (result, err) {
-      done(err);
-    });
+    restore(context.connection, context.backupSource).then(function () {
+      done();
+    }, done);
   }
 ], function (err) {
   if (err) {
     console.log('Failed in process with error', err);
+    process.exitCode = 1;
   }
 });

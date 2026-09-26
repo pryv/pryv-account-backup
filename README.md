@@ -159,4 +159,4 @@ When the username or password is unset, those suites are skipped (reported as pe
 
 ## License
 
-MIT License as included
+[BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)

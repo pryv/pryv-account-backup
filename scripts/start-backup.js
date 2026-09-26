@@ -1,3 +1,7 @@
+/**
+ * @license
+ * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
+ */
 const fs = require('fs');
 const async = require('async');
 const read = require('read');
@@ -24,11 +28,11 @@ async.series([
     });
   },
   function checkServiceInfo (done) {
-    context.service.info().then(function (result, err) {
+    context.service.info().then(function (result) {
       context.info = result;
       console.log('Ready to login service: ' + context.info.name);
-      done(err);
-    });
+      done();
+    }, done);
   },
   function inputUsername (done) {
     readP({ prompt: 'Username : ', silent: false }, function (err, username) {
@@ -103,5 +107,6 @@ async.series([
 ], function (err) {
   if (err) {
     console.log('Failed in process with error', err);
+    process.exitCode = 1;
   }
 });

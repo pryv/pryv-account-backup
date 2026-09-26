@@ -1,4 +1,8 @@
 /**
+ * @license
+ * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
+ */
+/**
  * Live test account, read from the environment.
  *
  * The acceptance tests (and the unit tests that talk to a real Pryv platform)
@@ -32,7 +36,8 @@ const notified = new Set();
  * skips the suite when no live account is configured, printing one notice.
  * @param {Object} ctx - the mocha hook context (`this`)
  * @param {string} suiteName
- * @returns {boolean} true when the suite may run
+ * @returns {true} when the suite may run; otherwise `ctx.skip()` throws mocha's
+ *   pending marker, so the caller's code after this call does not run.
  */
 function requireLiveAccount (ctx, suiteName) {
   if (credentials) return true;

@@ -1,37 +1,37 @@
 {
   "name": "@pryv/account-backup",
-  "description": "Backup your Pryv account",
   "version": "0.7.1",
   "private": false,
+  "description": "Backup your Pryv account",
   "keywords": [
     "Pryv",
     "backup",
     "app",
     "node"
   ],
-  "main": "src/main.js",
+  "bugs": {
+    "url": "https://github.com/pryv/pryv-account-backup/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/pryv/pryv-account-backup"
   },
-  "bugs": {
-    "url": "https://github.com/pryv/pryv-account-backup/issues"
-  },
-  "author": {
-    "name": "Pryv"
-  },
-  "scripts": {
-    "start": "node scripts/start-backup.js",
-    "restore": "node scripts/start-restore.js",
-    "test": "mocha test/**/*.test.js",
-    "test-travis": "./node_modules/istanbul/lib/cli.js cover ./node_modules/./bin/_mocha -- -R spec ./test/**/*.test.js"
-  },
+  "license": "BSD-3-Clause",
+  "author": "Pryv <info@pryv.com> (https://pryv.com)",
   "contributors": [
     {
       "name": "Pierre-Mikael Legris (Perki)",
       "email": "perki@pryv.com"
     }
   ],
+  "main": "src/main.js",
+  "scripts": {
+    "license": "source-licenser --config-file .licenser.yml ./",
+    "restore": "node scripts/start-restore.js",
+    "start": "node scripts/start-backup.js",
+    "test": "mocha test/**/*.test.js",
+    "test-travis": "./node_modules/istanbul/lib/cli.js cover ./node_modules/./bin/_mocha -- -R spec ./test/**/*.test.js"
+  },
   "dependencies": {
     "async": "^3.2.6",
     "pryv": "^3.4.1",
@@ -41,6 +41,7 @@
     "esbuild": "^0.28.1",
     "mocha": "^11.7.6",
     "should": "^13.2.3",
+    "source-licenser": "^2.0.6",
     "superagent": "^10.3.0"
   },
   "engines": {
@@ -49,6 +50,5 @@
   "overrides": {
     "diff": "^9.0.0",
     "serialize-javascript": "^7.0.5"
-  },
-  "license": "BSD-3-Clause"
+  }
 }

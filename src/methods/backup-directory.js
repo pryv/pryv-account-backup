@@ -1,3 +1,7 @@
+/**
+ * @license
+ * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
+ */
 const fs = require('fs');
 const async = require('async');
 const path = require('path');
@@ -72,38 +76,20 @@ BackupDirectory.prototype.createDirs = function (callback, log) {
   if (!log) {
     log = console.log;
   }
+  // A failed mkdir rejects: it must reach the callback, not hang the series.
+  const step = (dir, done, what) => function (stepDone) {
+    mkdirRecursive(dir).then(function () {
+      log(done);
+      stepDone();
+    }, function (err) {
+      console.error('Error while creating ' + what + ': ' + dir, err);
+      stepDone(err);
+    });
+  };
   async.series([
-    function createBaseDir(stepDone) {
-      mkdirRecursive(this.baseDir).then(function (res, err){
-        if (err) {
-          console.error('Error while creating base dir: ' + this.baseDir, err);
-          return stepDone(err);
-        }
-        log('Directories: created base dir > ' + this.baseDir);
-        stepDone();
-      }.bind(this));
-    }.bind(this),
-    function createAppProfileDir(stepDone) {
-      mkdirRecursive(this.appProfilesDir).then(function (res, err){
-        if (err) {
-          console.error('Error while creating accesses dir: ' + this.appProfilesDir, err);
-          return stepDone(err);
-        }
-        log('Directories: appProfilesDir');
-        stepDone();
-      }.bind(this));
-    }.bind(this),
-    function createAttachmentsDir(stepDone) {
-      mkdirRecursive(this.attachmentsDir).then(function (res, err){
-        if (err) {
-          console.error('Error while creating attachments dir: ' + this.attachmentsDir, err);
-          return stepDone(err);
-        }
-
-        log('Directories: attachmentsDir');
-        stepDone();
-      }.bind(this));
-    }.bind(this)
+    step(this.baseDir, 'Directories: created base dir > ' + this.baseDir, 'base dir'),
+    step(this.appProfilesDir, 'Directories: appProfilesDir', 'accesses dir'),
+    step(this.attachmentsDir, 'Directories: attachmentsDir', 'attachments dir')
   ], callback);
 };
 

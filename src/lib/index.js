@@ -1,4 +1,8 @@
 /**
+ * @license
+ * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
+ */
+/**
  * `@pryv/account-backup` library entrypoint.
  *
  *   const { Backup, NodeFsStorageWriter, FolderStateStore } = require('@pryv/account-backup/lib');
