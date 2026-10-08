@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.8.0 - 2026-10-08
+
+Restore reports what the target refused and exits non-zero on any refusal, restores account fields
+through the methods meant for them, and handles backups with incremental runs. Backup output is
+unchanged.
+
 - Restore: refused calls are no longer silent. A batch call answers each item with a result or an
   error and never fails as a whole, so a restore could have every item refused and still exit 0.
   Restore now prints a per-resource summary (ok / refused / skipped, first refusals with their
