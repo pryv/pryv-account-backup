@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- Restore: refused calls are no longer silent. A batch call answers each item with a result or an
+  error and never fails as a whole, so a restore could have every item refused and still exit 0.
+  Restore now prints a per-resource summary (ok / refused / skipped, first refusals with their
+  reason) and the CLI exits non-zero when the target refused anything. The `res_<resource>.log`
+  files are still written.
+- Restore: streams and events in server-managed namespaces (ids starting with `:`) are no longer
+  posted back through `streams.create` / `events.create`. Before, a personal-token backup carried
+  the account fields as events and restore wrote some of them (language, editable operator-declared
+  fields) through the events API, bypassing `account.update`.
+- Restore: account fields are restored deliberately. Language and the primary email come from
+  `account.json` through `account.update` (a primary email already used on the target is reported
+  and skipped); additional addresses are re-added as pending only with
+  `--restore-secondary-emails` (the target sends each a verification mail); operator-declared
+  fields update the target's existing value with `events.update`, and a field the target does not
+  allow editing is reported as skipped. Verification state is never restored. (On open-pryv.io
+  2.0.0-rc.43 and earlier, operator-declared fields only reach a backup through an incremental run:
+  the core stamps them with the time they are read, which is after the first run's last chunk.)
+- Restore: backups with incremental runs restore the latest version of each event once, and events
+  deleted in a later run are no longer re-created. Before, the oldest copy was created and the newer
+  one refused as a duplicate.
+- Restore CLI: an unknown `--option` is refused with the usage (exit 2) instead of being ignored,
+  and a directory that is not a backup exits 1. Very old backups whose events carry a single
+  `streamId` restore again; an event with no stream at all is reported as skipped.
+- README: the restore command is `npm run restore -- <path>` (it said `npm start restore`).
+
 - Development dependencies: lockfile refresh clears 3 high and 1 moderate advisory in
   test-only transitive packages (`js-yaml` via mocha, `form-data` and `qs` via
   superagent). No runtime dependency changes.
