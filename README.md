@@ -148,7 +148,8 @@ password. What it does:
   - language and primary email from `account.json`, with `account.update`. If the primary email is
     already used by another account on the target platform, it is reported and the restore goes on;
   - additional addresses only with `--restore-secondary-emails`: each is added as **pending** and
-    the target platform sends it a verification mail;
+    the target platform sends it a verification mail. The target caps addresses per account
+    (`account:maxEmails`, 5 by default), so addresses past that cap are reported as refused;
   - account fields declared by the platform operator: the target's existing value is updated with
     `events.update`. A field the target does not allow editing is reported as skipped. Note that
     open-pryv.io 2.0.0-rc.43 and earlier stamp these fields with the time they are read, so they

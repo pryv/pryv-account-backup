@@ -18,8 +18,6 @@ const LEGACY_SYSTEM_PREFIX = '.';
 const CUSTOMER_ACCOUNT_PREFIX = ':system:';
 // The primary email is coordinated by `account.update` only.
 const PRIMARY_EMAIL_STREAM_ID = ':system:email';
-// Server-side ceiling on addresses per `emails.add` operation.
-const MAX_EMAILS_PER_CALL = 20;
 
 function isRestorableStreamId (streamId) {
   return !streamId.startsWith(LEGACY_SYSTEM_PREFIX) && !streamId.startsWith(SERVER_MANAGED_PREFIX);
@@ -58,6 +56,11 @@ function readEvents (sourcePath) {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf-8'));
     if (Array.isArray(parsed.events)) {
       for (const e of parsed.events) allEvents.push(e);
+    }
+    // Incremental runs (`includeDeletions=true`) carry deletions in their own
+    // `eventDeletions` list, as `{ id, deleted }`.
+    if (Array.isArray(parsed.eventDeletions)) {
+      for (const d of parsed.eventDeletions) allEvents.push(d);
     }
   }
   const events = latestEventVersions(allEvents);
@@ -101,6 +104,8 @@ async function restoreStreams (connection, sourcePath, report) {
       } else if (s.id.startsWith(SERVER_MANAGED_PREFIX)) {
         // Children of a server-managed stream are server-managed too.
         report.recordSkip('streams', s.id, 'server-managed stream (not replayed)');
+      } else {
+        report.recordSkip('streams', s.id, 'legacy system stream (not replayed)');
       }
     });
   }
@@ -166,25 +171,31 @@ async function restoreEmails (connection, exported, target, options, report) {
       '; verification state is not restored');
   }
 
+  // Addresses are compared exactly, as the server does.
   const onTarget = new Set();
-  if (target.email) onTarget.add(target.email.toLowerCase());
-  for (const e of (target.emails || [])) if (e && e.value) onTarget.add(e.value.toLowerCase());
+  if (target.email) onTarget.add(target.email);
+  for (const e of (target.emails || [])) if (e && e.value) onTarget.add(e.value);
 
-  if (primary && primary.toLowerCase() !== (target.email || '').toLowerCase()) {
+  if (primary && primary !== target.email) {
     const res = await connection.api([{ method: 'account.update', params: { update: { email: primary } } }]);
     const error = errorOf(res && res[0]);
     if (error && error.id === 'item-already-exists') {
       report.recordSkip('account', 'email ' + primary, 'already used by another account on the target platform');
     } else {
       report.recordCall('account', 'email ' + primary, res && res[0]);
-      if (!error) onTarget.add(primary.toLowerCase());
+      if (!error) onTarget.add(primary);
     }
   }
 
-  const secondaries = exportedEmails
-    .filter((e) => !e.primary && e.value && !onTarget.has(e.value.toLowerCase()))
-    .map((e) => e.value)
-    .slice(0, MAX_EMAILS_PER_CALL);
+  const secondaries = [];
+  for (const e of exportedEmails) {
+    if (e.primary || !e.value) continue;
+    if (onTarget.has(e.value)) {
+      report.recordSkip('account', 'email ' + e.value, 'already on the target account');
+    } else {
+      secondaries.push(e.value);
+    }
+  }
   if (secondaries.length === 0) return;
   if (!options.restoreSecondaryEmails) {
     for (const value of secondaries) {
@@ -193,7 +204,8 @@ async function restoreEmails (connection, exported, target, options, report) {
     }
     return;
   }
-  // One call per address, so one refused address does not block the others.
+  // One call per address, so one refused address (taken, or over the target's
+  // per-account limit) does not block the others; each refusal is reported.
   const calls = secondaries.map((value) => ({ method: 'account.update', params: { update: { emails: { add: [value] } } } }));
   const res = await connection.api(calls);
   secondaries.forEach((value, i) => {
@@ -208,7 +220,8 @@ async function restoreEmails (connection, exported, target, options, report) {
 
 /**
  * Latest exported event per operator-declared account field, the primary
- * email excepted. Deleted and trashed entries are ignored.
+ * email excepted. Deleted and trashed entries are ignored. Relies on
+ * `modified`, so it runs before restoreEvents() strips that property.
  */
 function customAccountFieldEvents (allEvents) {
   const byStream = new Map();
@@ -241,7 +254,8 @@ async function restoreCustomAccountFields (connection, allEvents, report) {
     }
     const current = (found[i].events || [])[0];
     if (!current) {
-      report.recordSkip('account', streamId, 'the target has no value for this field to update');
+      report.recordSkip('account', streamId, 'the target has no value for this field to update' +
+        ' (set it on the target first, then restore again or set it by hand)');
       return;
     }
     const wanted = byStream.get(streamId).content;
@@ -269,10 +283,16 @@ async function restoreEvents (connection, allEvents, sourcePath, report) {
   const eventsSeries = [];
   let notReplayed = 0;
   allEvents.forEach((e) => {
+    // Very old backups carry a single `streamId` instead of `streamIds`.
+    if (!Array.isArray(e.streamIds) && e.streamId) e.streamIds = [e.streamId];
     ['modified', 'modifiedBy', 'streamId', 'created', 'createdBy'].forEach((key) => { delete e[key]; });
+    if (!Array.isArray(e.streamIds) || e.streamIds.length === 0) {
+      report.recordSkip('events', e.id, 'no stream in the backup');
+      return;
+    }
     // Drop system and server-managed streams; account fields were handled by
     // restoreAccount().
-    e.streamIds = (e.streamIds || []).filter(isRestorableStreamId);
+    e.streamIds = e.streamIds.filter(isRestorableStreamId);
 
     // uncomment the following line to change event Ids, usefull when loading on the same system
     // e.oldId = e.id; e.id = cuid();
@@ -423,6 +443,10 @@ async function uploadInBatch (connection, data, ressource, report) {
   data.forEach((item) => {
     calls.push({ method: ressource + '.create', params: item });
   });
+  if (calls.length === 0) {
+    fs.writeFileSync('res_' + ressource + '.log', '[]');
+    return;
+  }
   const res = await connection.api(calls, (progress) => {
     console.log('Uploading ' + ressource + ' ' + progress + '%');
   });

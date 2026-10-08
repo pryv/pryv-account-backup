@@ -166,8 +166,24 @@ describe('[RSTR] restore', function () {
       for (const call of created) {
         call.params.streamIds.filter((s) => s.startsWith(':')).should.be.empty();
       }
-      report.resources.streams.skipped.map((s) => s.id).should.eql([':_system:account', ':_audit:accesses']);
+      report.resources.streams.skipped.map((s) => s.id).should.eql([':_system:account', ':_audit:accesses', '.legacy']);
       report.notes.join('\n').should.match(/5 event\(s\) only in system or server-managed streams were not replayed/);
+    });
+
+    it('[RSN3] restores legacy streamId-only events and skips events with no stream', async function () {
+      writeBackup(backupDir, {
+        streams: [{ id: 'diary', name: 'Diary' }],
+        events: [
+          { id: 'old', streamId: 'diary', type: 'note/txt', content: 'legacy', time: 1 },
+          { id: 'none', type: 'note/txt', content: 'orphan', time: 2 }
+        ]
+      });
+      const conn = fakeConnection(defaultAnswer);
+      const report = await restore(conn, backupDir);
+      const created = conn.callsTo('events.create');
+      created.map((c) => [c.params.id, c.params.streamIds]).should.eql([['old', ['diary']]]);
+      should.not.exist(created[0].params.streamId);
+      report.resources.events.skipped.map((s) => s.id).should.eql(['none']);
     });
 
     it('[RSN2] isRestorableStreamId', function () {
@@ -189,11 +205,13 @@ describe('[RSTR] restore', function () {
           { id: 'e3', streamIds: ['diary'], type: 'note/txt', content: 'later deleted', time: 3, modified: 10 }
         ]
       });
+      // Shape of an `events?modifiedSince=T&includeDeletions=true` body:
+      // deletions come in their own `eventDeletions` list.
       fs.writeFileSync(path.join(backupDir, 'events-incremental-20.json'), JSON.stringify({
         events: [
-          { id: 'e1', streamIds: ['diary'], type: 'note/txt', content: 'new', time: 1, modified: 20 },
-          { id: 'e3', deleted: 20 }
-        ]
+          { id: 'e1', streamIds: ['diary'], type: 'note/txt', content: 'new', time: 1, modified: 20 }
+        ],
+        eventDeletions: [{ id: 'e3', deleted: 20 }]
       }));
       const conn = fakeConnection(defaultAnswer);
       const report = await restore(conn, backupDir);
@@ -297,6 +315,34 @@ describe('[RSTR] restore', function () {
       adds.should.eql([['second@example.com'], ['third@example.com']]);
     });
 
+    it('[RSA9] an address already on the target is not added again', async function () {
+      backupWithAccount(SOURCE_ACCOUNT);
+      const conn = fakeConnection((method, params) => {
+        if (method === 'account.get') {
+          return {
+            account: Object.assign({}, TARGET_ACCOUNT, {
+              emails: TARGET_ACCOUNT.emails.concat([{ value: 'second@example.com', primary: false, status: 'pending' }])
+            })
+          };
+        }
+        return defaultAnswer(method, params);
+      });
+      const report = await restore(conn, backupDir, { restoreSecondaryEmails: true });
+      conn.callsTo('account.update').filter((c) => c.params.update.emails).should.be.empty();
+      const skipped = report.resources.account.skipped.find((s) => s.id === 'email second@example.com');
+      skipped.reason.should.equal('already on the target account');
+    });
+
+    it('[RSAG] a refused account.get is a failure and nothing is written to the account', async function () {
+      backupWithAccount(SOURCE_ACCOUNT);
+      const conn = fakeConnection((method, params) =>
+        method === 'account.get' ? { error: { id: 'forbidden', message: 'no' } } : defaultAnswer(method, params));
+      const report = await restore(conn, backupDir);
+      conn.callsTo('account.update').should.be.empty();
+      conn.callsTo('events.update').should.be.empty();
+      report.resources.account.failed.map((f) => f.id).should.eql(['account.get']);
+    });
+
     it('[RSA7] verification state is printed, never sent', async function () {
       backupWithAccount(SOURCE_ACCOUNT);
       const conn = fakeConnection(defaultAnswer);
@@ -352,6 +398,19 @@ describe('[RSTR] restore', function () {
       skipped.reason.should.match(/not editable/);
     });
 
+    it('[RSC5] an invalid-operation refusal about another stream is a failure', async function () {
+      backupWithPhone();
+      const conn = fakeConnection((method, params) => {
+        if (method === 'events.get') return { events: [{ id: 'target-phone', content: '+41 99' }] };
+        if (method === 'events.update') {
+          return { error: { id: 'invalid-operation', message: 'something else', data: { streamId: ':system:other' } } };
+        }
+        return defaultAnswer(method, params);
+      });
+      const report = await restore(conn, backupDir);
+      report.resources.account.failed.map((f) => f.id).should.eql([':system:phone']);
+    });
+
     it('[RSC3] skips a field the target lacks or already holds', async function () {
       backupWithPhone();
       let conn = fakeConnection((method, params) =>
@@ -369,7 +428,8 @@ describe('[RSTR] restore', function () {
 
     it('[RSC4] ignores the primary email and deleted entries', function () {
       const byStream = restore.customAccountFieldEvents(ACCOUNT_EVENTS.concat([
-        { id: 'gone', streamIds: [':system:fax'], deleted: 10 }
+        { id: 'gone', streamIds: [':system:fax'], deleted: 10 },
+        { id: 'binned', streamIds: [':system:pager'], content: 'x', trashed: true, modified: 9 }
       ]));
       [...byStream.keys()].should.eql([':system:phone']);
       byStream.get(':system:phone').id.should.equal('ev-phone');

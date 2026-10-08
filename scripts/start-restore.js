@@ -25,27 +25,33 @@ function backupHasEvents (dir) {
   return fs.readdirSync(dir).some((n) => n.startsWith('events-') && n.endsWith('.json'));
 }
 
+const USAGE = 'Usage: node scripts/start-restore.js <pathToDirectory> [--restore-secondary-emails]';
+// Re-adding the backup's non-primary addresses sends each a verification mail
+// from the target platform, so it is opt-in.
+const KNOWN_OPTIONS = ['--restore-secondary-emails'];
+
 const args = process.argv.slice(2);
+const unknownOptions = args.filter((a) => a.startsWith('--') && !KNOWN_OPTIONS.includes(a));
+if (unknownOptions.length > 0) {
+  console.log('Unknown option(s): ' + unknownOptions.join(' '));
+  console.log(USAGE);
+  process.exit(2);
+}
 const sourceArg = args.find((a) => !a.startsWith('--'));
 context.options = {
-  // Re-add the backup's non-primary addresses as pending: each gets a
-  // verification mail from the target platform, so this is opt-in.
   restoreSecondaryEmails: args.includes('--restore-secondary-emails')
 };
 
-if (sourceArg) {
-  if (!backupHasEvents(sourceArg)) { // skip
-    console.log('Directory [' + sourceArg + '] is not a valid backup directory ' +
-      '(no events.json or events-YYYY-MM.json found)');
-  } else {
-    context.backupSource = sourceArg;
-  }
-}
-
-if (!context.backupSource) {
-  console.log('Usage: node scripts/start-restore.js <pathToDirectory> [--restore-secondary-emails]');
+if (!sourceArg) {
+  console.log(USAGE);
   process.exit(0);
 }
+if (!backupHasEvents(sourceArg)) {
+  console.log('Directory [' + sourceArg + '] is not a valid backup directory ' +
+    '(no events.json or events-YYYY-MM.json found)');
+  process.exit(1);
+}
+context.backupSource = sourceArg;
 
 async.series([
   function inputServiceInfo (done) {

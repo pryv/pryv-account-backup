@@ -22,6 +22,9 @@
 - Restore: backups with incremental runs restore the latest version of each event once, and events
   deleted in a later run are no longer re-created. Before, the oldest copy was created and the newer
   one refused as a duplicate.
+- Restore CLI: an unknown `--option` is refused with the usage (exit 2) instead of being ignored,
+  and a directory that is not a backup exits 1. Very old backups whose events carry a single
+  `streamId` restore again; an event with no stream at all is reported as skipped.
 - README: the restore command is `npm run restore -- <path>` (it said `npm start restore`).
 
 - Development dependencies: lockfile refresh clears 3 high and 1 moderate advisory in
