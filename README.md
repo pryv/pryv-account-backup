@@ -131,7 +131,34 @@ Restore is **CLI-only** + marked experimental — `audit`, `webhooks`, and `acce
 
 ## (Experimental) Restore Streams and Events to another account
 
-`npm start restore <path to backup dir>`
+```bash
+npm run restore -- <path to backup dir>
+npm run restore -- <path to backup dir> --restore-secondary-emails
+```
+
+The script asks for the target platform's service info URL and the target account's username and
+password. What it does:
+
+- **Streams and events** are re-created with `streams.create` / `events.create`. Streams and events
+  in server-managed namespaces (any id starting with `:`, e.g. `:_system:`, `:system:`, `:_audit:`)
+  and legacy `.`-prefixed system streams are never replayed this way. When a backup has incremental
+  runs, only the latest version of each event is restored and events deleted in a later run are
+  not re-created.
+- **Account fields** are restored through the methods meant for them:
+  - language and primary email from `account.json`, with `account.update`. If the primary email is
+    already used by another account on the target platform, it is reported and the restore goes on;
+  - additional addresses only with `--restore-secondary-emails`: each is added as **pending** and
+    the target platform sends it a verification mail;
+  - account fields declared by the platform operator: the target's existing value is updated with
+    `events.update`. A field the target does not allow editing is reported as skipped. Note that
+    open-pryv.io 2.0.0-rc.43 and earlier stamp these fields with the time they are read, so they
+    only reach a backup through an incremental run, not through the first one.
+- **Verification state is never restored.** Whether an address is verified is decided by the
+  target platform; the backup's status of each address is printed for the record.
+- **Refusals are reported.** At the end the script prints, per resource, how many calls succeeded,
+  were refused or were skipped, with the first refusals and their reasons, and **exits non-zero**
+  when the target refused anything. The full answers stay in the `res_<resource>.log` files written
+  in the working directory.
 
 ## Contribute
 

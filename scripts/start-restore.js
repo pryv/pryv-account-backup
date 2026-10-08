@@ -25,22 +25,30 @@ function backupHasEvents (dir) {
   return fs.readdirSync(dir).some((n) => n.startsWith('events-') && n.endsWith('.json'));
 }
 
-if (process.argv[2]) {
-  if (!backupHasEvents(process.argv[2])) { // skip
-    console.log('Directory [' + process.argv[2] + '] is not a valid backup directory ' +
+const args = process.argv.slice(2);
+const sourceArg = args.find((a) => !a.startsWith('--'));
+context.options = {
+  // Re-add the backup's non-primary addresses as pending: each gets a
+  // verification mail from the target platform, so this is opt-in.
+  restoreSecondaryEmails: args.includes('--restore-secondary-emails')
+};
+
+if (sourceArg) {
+  if (!backupHasEvents(sourceArg)) { // skip
+    console.log('Directory [' + sourceArg + '] is not a valid backup directory ' +
       '(no events.json or events-YYYY-MM.json found)');
   } else {
-    context.backupSource = process.argv[2];
+    context.backupSource = sourceArg;
   }
 }
 
 if (!context.backupSource) {
-  console.log('Usage: node scripts/start-restore.js <pathToDirectory>');
+  console.log('Usage: node scripts/start-restore.js <pathToDirectory> [--restore-secondary-emails]');
   process.exit(0);
 }
 
 async.series([
-  function inputServiceInfo(done) {
+  function inputServiceInfo (done) {
     readP({ prompt: 'Service info URL: ', silent: false }, function (err, serviceInfoUrl) {
       if (!serviceInfoUrl || serviceInfoUrl.trim().length === 0) {
         serviceInfoUrl = 'https://reg.pryv.me/service/info';
@@ -56,8 +64,8 @@ async.series([
       console.log('Ready to login service: ' + context.info.name);
       done();
     }, done);
-  }
-  , function inputUsername (done) {
+  },
+  function inputUsername (done) {
     readP({ prompt: 'Username : ', silent: false }, function (err, username) {
       context.username = username;
       done(err);
@@ -77,7 +85,13 @@ async.series([
   },
   function doRestore (done) {
     console.log('starting restore');
-    restore(context.connection, context.backupSource).then(function () {
+    restore(context.connection, context.backupSource, context.options).then(function (report) {
+      for (const line of report.toLines()) console.log(line);
+      if (report.hasFailures()) {
+        console.log('Restore incomplete: ' + report.failureCount() +
+          ' call(s) refused by the target (full answers in the res_*.log files).');
+        process.exitCode = 1;
+      }
       done();
     }, done);
   }

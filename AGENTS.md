@@ -63,7 +63,12 @@ scripts/
 ├── start-backup.js            ← CLI entry (interactive prompts)
 └── start-restore.js           ← CLI restore (experimental, deliberately limited)
 
-src/restore.js                 ← restore-side logic (CLI only; library does NOT export restore)
+src/restore.js                 ← restore-side logic (CLI only; library does NOT export restore);
+                                 never replays ':'-prefixed streams/events, restores account
+                                 fields via account.update / events.update, dedupes incremental
+                                 copies, resolves with a RestoreReport
+src/restore-report.js          ← per-resource ok / refused / skipped summary; CLI exits non-zero
+                                 on any refusal
 ```
 
 ## Ref-tracking flow (v0.7.0+)
