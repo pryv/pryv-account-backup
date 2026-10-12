@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.1 - 2026-10-12
 
 Incremental runs and the audit log no longer stop at 20 rows. Output file names are unchanged,
 except that an incremental audit fetch now gets its own file.
