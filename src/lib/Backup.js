@@ -127,11 +127,13 @@ class Backup {
     let eventsModifiedSince = null;
     let auditModifiedSince = null;
     (async function loadIncrementalState () {
-      runStartedAt = await eventsPager.serverTime(connection);
-      if (runStartedAt == null) {
-        runStartedAt = Math.floor(Date.now() / 1000);
-        log('Server sent no meta.serverTime: using the local clock for the next incremental threshold');
+      try {
+        runStartedAt = await eventsPager.serverTime(connection);
+        if (runStartedAt == null) log('Server sent no meta.serverTime: using the local clock for the next incremental threshold');
+      } catch (err) {
+        log('Could not read the server clock (' + (err.message || err) + '): using the local clock for the next incremental threshold');
       }
+      if (runStartedAt == null) runStartedAt = Math.floor(Date.now() / 1000);
       const prior = await state.get(STATE_KEYS.lastRunAt);
       if (prior == null) return;
       eventsModifiedSince = await state.get(STATE_KEYS.eventsLastModifiedSince);

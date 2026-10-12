@@ -22,7 +22,7 @@ const BackupDirectory = require('../../src/methods/backup-directory');
 // Without `modifiedSince` the helper fetches month windows through
 // apiResources.toJSONFile, intercepted here so the test needs no Pryv account.
 
-describe('[PAIB] events-chunked incremental mode', function () {
+describe('[PAIB] events-chunked initial mode', function () {
   const apiResources = require('../../src/methods/api-resources');
   let captured;
   let originalToJSONFile;
@@ -87,7 +87,8 @@ const SINCE = 1700000000;
 const RUN_TS = 1700100000;
 
 function fakeServer () {
-  const server = { events: [], deletions: [], sqliteDeletions: false, serverTime: null, requests: [] };
+  // accessInfo: 'ok' | 'no-meta' (no meta.serverTime) | 'error' (HTTP 500)
+  const server = { events: [], deletions: [], sqliteDeletions: false, serverTime: null, accessInfo: 'ok', requests: [] };
 
   function shuffleTies (list, key, asc) {
     const shuffled = list.map((x) => [Math.random(), x]).sort((a, b) => a[0] - b[0]).map((p) => p[1]);
@@ -98,6 +99,7 @@ function fakeServer () {
     const u = new URL(url);
     const now = Date.now() / 1000;
     const meta = { apiVersion: 'fake', serverTime: server.serverTime != null ? server.serverTime : now };
+    if (u.pathname.endsWith('/access-info') && server.accessInfo === 'no-meta') return { type: 'personal' };
     if (!u.pathname.endsWith('/events')) return { meta, accesses: [] };
     const q = u.searchParams;
     const num = (k) => q.has(k) ? Number(q.get(k)) : null;
@@ -143,6 +145,7 @@ function fakeServer () {
     server.requests.push(url);
     // A paging loop that stops making progress fails instead of hanging.
     if (server.requests.length > 200) return Promise.resolve({ status: 500, statusText: 'too many requests' });
+    if (url.endsWith('/access-info') && server.accessInfo === 'error') return Promise.resolve({ status: 500, statusText: 'boom' });
     const body = serve(url);
     const encoded = new TextEncoder().encode(JSON.stringify(body));
     let yielded = false;
@@ -359,7 +362,7 @@ describe('[PAAU] audit-as-events paging', function () {
       JSON.parse(new URL(url).searchParams.get('streams')).should.eql([':_audit:accesses', ':_audit:actions']);
       url.should.match(/[?&]limit=\d+/);
       url.should.match(/[?&]toTime=/);
-      url.should.not.match(/modifiedSince|includeDeletions|running/);
+      url.should.not.match(/modifiedSince|includeDeletions/);
     }
   });
 
@@ -371,6 +374,16 @@ describe('[PAAU] audit-as-events paging', function () {
     const doc = JSON.parse(files['audit_logs-incremental-' + RUN_TS + '.json']);
     doc.events.length.should.equal(45);
     server.requests.every((u) => u.includes('modifiedSince=' + SINCE)).should.equal(true);
+  });
+
+  it('collects audit rows with a null endTime older than the first page', async function () {
+    addAudit(30);
+    for (let i = 0; i < 3; i++) {
+      server.events.push({ id: 'a-null-' + i, streamIds: [':_audit:actions:action-x'], time: SINCE - 900000 - i, duration: null, modified: SINCE + 1 });
+    }
+    const doc = JSON.parse((await run())['audit_logs.json']);
+    doc.events.length.should.equal(33);
+    doc.events.map((e) => e.id).should.containEql('a-null-2');
   });
 
   it('appends state=all when includeTrashed is set', async function () {
@@ -537,14 +550,14 @@ describe('[PAST] Backup takes the incremental threshold from the server clock', 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function runBackup () {
+  function runBackup (logs) {
     const dir = new BackupDirectory('https://token@host.example.com/', tmpDir);
     const backup = new Backup({
       connection: FAKE_CONN,
       writer: new NodeFsStorageWriter(dir),
       state: new FolderStateStore(dir.baseDir),
       options: { includeAttachments: false, includeHfData: false, includeWebhooks: false },
-      log: () => {}
+      log: (msg) => { if (logs) logs.push(String(msg)); }
     });
     return new Promise((resolve, reject) => backup.run((err) => err ? reject(err) : resolve(dir)));
   }
@@ -567,4 +580,19 @@ describe('[PAST] Backup takes the incremental threshold from the server clock', 
     incremental.every((u) => u.includes('modifiedSince=' + expected)).should.equal(true);
     fs.existsSync(path.join(dir.baseDir, 'events-incremental-' + Math.floor(server.serverTime) + '.json')).should.equal(true);
   });
+
+  for (const mode of ['no-meta', 'error']) {
+    it('falls back to the local clock, logs it, and completes when access-info ' +
+      (mode === 'error' ? 'fails' : 'has no meta.serverTime'), async function () {
+      server.accessInfo = mode;
+      server.serverTime = Math.floor(Date.now() / 1000) - 86400; // must not be used
+      const logs = [];
+      const before = Math.floor(Date.now() / 1000);
+      const dir = await runBackup(logs);
+      const after = Math.floor(Date.now() / 1000);
+      const lastRunAt = await new FolderStateStore(dir.baseDir).get('lastRunAt');
+      lastRunAt.should.be.within(before, after);
+      logs.some((m) => /using the local clock/.test(m)).should.equal(true);
+    });
+  }
 });

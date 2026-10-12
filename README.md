@@ -40,7 +40,7 @@ This downloads the following in JSON format:
 * Streams
 * Events — **chunked by UTC month into `events-YYYY-MM.json` files since 0.5.0** so multi-GB subjects don't time out the single round-trip; older backups stay in a single `events.json` and restore cleanly
 * Account Info
-* **Audit log** (`audit_logs.json`) — every audited operation on the subject (added in 0.3.0)
+* **Audit log** (`audit_logs.json`, then `audit_logs-incremental-<TS>.json` on later runs) — every audited operation on the subject (added in 0.3.0)
 * **Webhooks** per access (`webhooks.json`, keyed by `accessId`) — added in 0.3.0
 
 As well as the following in binary files:

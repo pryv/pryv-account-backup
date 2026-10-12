@@ -18,9 +18,9 @@ const webhooksExport = require('../../src/methods/webhooks-export');
 const FolderStateStore = require('../../src/lib/adapters/FolderStateStore');
 
 /**
- * [PALI] — Library Isomorphism contract: the four browser-portable per-method
- * modules (api-resources, events-chunked, audit-as-events, accesses-history)
- * MUST accept a `StorageWriter` adapter and route all writes through it.
+ * [PALI] — Library Isomorphism contract: the browser-portable per-method
+ * modules (api-resources, events-chunked, events-pager, audit-as-events,
+ * accesses-history, attachments, hf-data, webhooks-export) MUST accept a `StorageWriter` adapter and route all writes through it.
  *
  * The tests do not exercise real HTTP — `fetch` is patched globally for the
  * duration of each test. They verify the dual signature (writer + legacy

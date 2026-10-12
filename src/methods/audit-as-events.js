@@ -35,7 +35,9 @@ const STREAMS_PARAM = encodeURIComponent(JSON.stringify([
  *
  * Audit events are read in explicit pages (see `events-pager`): a request with
  * no time range and no `limit` gets the server's default cap of 20 rows. Audit
- * events have no duration (`endTime` = `time`), so no running-events walk.
+ * events are written with `endTime` = `time`; the running-events walk is kept
+ * for rows of older audit databases with a null `endTime`, which the time walk
+ * drops after its first page (it normally returns nothing).
  * Deletions are not requested: the server only reports deletions of the
  * user's own events, which the events backup already carries.
  *
@@ -70,7 +72,7 @@ async function downloadAudit (connection, writer, options, log) {
   const filename = incremental
     ? 'audit_logs-incremental-' + (options.runStartedAt || Math.floor(Date.now() / 1000)) + '.json'
     : 'audit_logs.json';
-  const got = await pager.collectEvents(connection, query, { pageSize: options.pageSize });
+  const got = await pager.collectEvents(connection, query, { pageSize: options.pageSize, running: true });
   log('Audit log: ' + got.events.length + ' event(s) to ' + filename);
   const doc = { events: got.events };
   if (got.meta) doc.meta = got.meta;

@@ -22,7 +22,7 @@ except that an incremental audit fetch now gets its own file.
 - Backup: the next incremental threshold comes from the server's clock (`meta.serverTime` of an
   `access-info` call made before any data is read) instead of the local clock. A local clock ahead
   of the server made the next run skip changes the server stamped during the run. The local clock
-  is used only if the server sends no `meta.serverTime`.
+  is used, with a log line, only if that call fails or carries no `meta.serverTime`.
 - Backup: incremental runs include trashed events whatever `includeTrashed` says, so an event
   trashed since the previous run reaches the backup, and restore recreates it trashed instead of
   keeping the earlier, untrashed copy. `includeTrashed` still decides whether the first run and the
