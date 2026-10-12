@@ -117,7 +117,7 @@ The class form decouples **what the backup does** (orchestration) from **where t
 
 ### Incremental backup
 
-On the second and subsequent runs against the same backup directory, the orchestrator reads `.sync-state.json` (the hidden operational store, written at the end of every successful run; auto-migrated from a pre-v0.7.0 `.state.json` if present), fetches events + audit-log entries via `events.get?modifiedSince=T&includeDeletions=true`, and writes a single `events-incremental-<TS>.json` (rather than re-chunking the full history). Small resources (`account`, `streams`, `accesses`, `profile`, `webhooks`) are still full-re-fetched — they're tiny.
+On the second and subsequent runs against the same backup directory, the orchestrator reads `.sync-state.json` (the hidden operational store, written at the end of every successful run; auto-migrated from a pre-v0.7.0 `.state.json` if present), fetches events + audit-log entries via `events.get?modifiedSince=T&includeDeletions=true` (events are read in explicit pages, so any number of changes and deletions is collected), and writes a single `events-incremental-<TS>.json` (`{ events, eventDeletions, meta }`) (rather than re-chunking the full history). Small resources (`account`, `streams`, `accesses`, `profile`, `webhooks`) are still full-re-fetched — they're tiny.
 
 For cross-session / cross-machine portability, the visible companion `sync-state.json` (no leading dot) is also written at the end of each run via the `StorageWriter`. The sample webapp uses this same file as a downloadable + re-uploadable artefact to drive true cross-browser incremental. Full schema at [`docs/sync-state.md`](docs/sync-state.md).
 

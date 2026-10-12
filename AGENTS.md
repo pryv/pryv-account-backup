@@ -25,7 +25,7 @@ Per-user run output (CLI, in a folder; webapp, across N ZIP files):
 | `app_profiles/profile_app_<accessId>.json` | per-app `GET /profile/app` with each app token | |
 | `audit_logs.json` | **`GET /events?streams=[':_audit:accesses',':_audit:actions']&modifiedSince=T`** (v0.6.0+) — was `/audit/logs` in v0.4.0–v0.5.0 | audit is a regular `@pryv/datastore` mounted at `:_audit:*` on every Pryv core; the dedicated `/audit/logs` route was **removed** from open-pryv.io on 2026-06-15 (commit `19d1c11f`), so v0.5.0 and earlier are now production-broken for the audit-log section against any deployment running that build |
 | `events-YYYY-MM.json` | `GET /events?fromTime=…&toTime=…` per monthly chunk (initial run) | preserves the v0.5.0 chunking story for first runs |
-| `events-incremental-<TS>.json` | `GET /events?modifiedSince=T&includeDeletions=true` (subsequent runs) | only events with `modified > T`; deletions included |
+| `events-incremental-<TS>.json` | `GET /events?modifiedSince=T&includeDeletions=true`, paged with explicit `limit` + time range (subsequent runs) | only events with `modified > T`; deletions included in `eventDeletions` |
 | `accesses-history/<accessId>.json` | per-access `GET /accesses/<id>?includeHistory=true` (opt-in) | O(N) calls; opt-in via CLI prompt or `params.includeAccessHistory` |
 | `attachments/<eventId>_<fileName>` | per-attachment `GET /events/<id>/<attId>?readToken=…` (opt-in) | streamed binary; both CLI + webapp |
 | `hf-data/<eventId>.json` | per `series:*` event `GET /events/<id>/series` (opt-in) | HFS data points; both CLI + webapp |
@@ -51,7 +51,7 @@ src/lib/
 
 src/methods/                   ← per-resource fetchers (all browser-isomorphic except manifest)
 ├── api-resources.js           ← fetch + writer; opt-in onParsed(doc) tee
-├── events-chunked.js          ← chunked initial / single incremental; onEvents(events[]) lift
+├── events-chunked.js          ← chunked initial / paged incremental; onEvents(events[]) lift
 ├── audit-as-events.js         ← :_audit:* streams via events.get
 ├── accesses-history.js        ← per-access version history (in-memory array)
 ├── attachments.js             ← drains 'attachment' refs; binary stream pipe

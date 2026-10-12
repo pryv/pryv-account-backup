@@ -7,6 +7,11 @@ const apiResources = require('./api-resources');
 const FAR_PAST = -2350373077;
 const FAR_FUTURE = 2350373077;
 const SECONDS_PER_DAY = 86400;
+// Incremental mode: page size, and a time range wide enough for any event
+// (seconds; stays a valid Date when a store converts it to milliseconds).
+const INCREMENTAL_PAGE_SIZE = 1000;
+const INCREMENTAL_FAR_PAST = -1e12;
+const INCREMENTAL_FAR_FUTURE = 1e12;
 
 /**
  * Fetch events in one of two modes depending on `options.modifiedSince`:
@@ -18,11 +23,12 @@ const SECONDS_PER_DAY = 86400;
  *     timing out the single round-trip + OOMing the caller. Preserved from
  *     v0.5.0.
  *
- *   - INCREMENTAL run (`options.modifiedSince` provided): single
- *     `events?modifiedSince=T&includeDeletions=true` round-trip writes
- *     `events-incremental-<RUN-TS>.json`. Only events with
- *     `modified > T` flow over the wire — minimum bytes; deletions are
- *     included so deletion-aware restore consumers can reconstruct.
+ *   - INCREMENTAL run (`options.modifiedSince` provided): every event with
+ *     `modified > T` and every deletion with `deleted > T` is fetched in
+ *     explicit pages (see `downloadIncremental`) and written to one
+ *     `events-incremental-<RUN-TS>.json` as `{ events, eventDeletions, meta }`.
+ *     Deletions are included so deletion-aware restore consumers can
+ *     reconstruct.
  *
  * Both modes carry the standard `{ events: [...], meta: {...} }` response
  * shape and are individually hashable by the integrity manifest.
@@ -60,20 +66,15 @@ exports.download = function download (connection, writer, options, callback, log
     ? function (doc) { return onEvents(Array.isArray(doc.events) ? doc.events : []); }
     : null;
 
-  // Incremental mode: single round-trip with modifiedSince.
+  // Incremental mode: paged fetch of everything modified / deleted since T.
   if (options.modifiedSince != null) {
-    const runTs = options.runStartedAt || Math.floor(Date.now() / 1000);
-    const resource = 'events?modifiedSince=' + options.modifiedSince +
-      '&includeDeletions=true' + stateAll;
-    log('Events incremental: modifiedSince=' + options.modifiedSince +
-      ' (' + new Date(options.modifiedSince * 1000).toISOString() + ')');
-    apiResources.toJSONFile({
-      writer: writer,
-      resource: resource,
-      connection: connection,
-      filename: 'events-incremental-' + runTs + '.json',
-      onParsed: onParsed
-    }, callback, log);
+    // The callback runs outside the promise chain so an exception thrown by
+    // the caller is neither swallowed nor turned into a second callback.
+    downloadIncremental(connection, writer, options, stateAll, onEvents, log)
+      .then(function () { return null; }, function (err) { return err; })
+      .then(function (err) {
+        setTimeout(function () { err ? callback(err) : callback(); }, 0);
+      });
     return;
   }
 
@@ -112,6 +113,133 @@ exports.download = function download (connection, writer, options, callback, log
     next();
   });
 };
+
+/**
+ * Incremental fetch. `events.get` caps a query that has neither a time range
+ * nor a `limit` at 20 events (and its deletions at the same `limit`), so a
+ * bare `modifiedSince` request silently drops everything past the 20th
+ * change. Every request here carries an explicit time range and `limit`.
+ *
+ * Paging is keyset-based rather than `skip`-based: the server sorts events by
+ * `time` only (ties in no fixed order) and deletions by `deleted` only, and a
+ * concurrent deletion would shift `skip` offsets and lose an unmodified event.
+ * Each loop moves an inclusive bound instead, re-reads the rows sitting on the
+ * bound, and de-duplicates by id; when a full page sits entirely on the bound
+ * the page size doubles so ties of any size are read whole.
+ *
+ *   1. Events, newest first, `toTime` = cursor (inclusive). Once the cursor
+ *      drops below "now" the server stops matching running events (null
+ *      `endTime`), so:
+ *   2. running events get the same walk with `running=true`.
+ *   3. Deletions, oldest first, with `modifiedSince` as the exclusive bound
+ *      (deletions are matched on `deleted > modifiedSince`, ordered by
+ *      `deleted`) and a time range no event can match, so the event half of
+ *      those responses stays empty.
+ *
+ * The file is written once, after every page has been read, so a failed run
+ * never leaves a truncated JSON document behind.
+ */
+async function downloadIncremental (connection, writer, options, stateAll, onEvents, log) {
+  log = log || function () {};
+  const since = options.modifiedSince;
+  const runTs = options.runStartedAt || Math.floor(Date.now() / 1000);
+  const pageSize = options.incrementalPageSize || INCREMENTAL_PAGE_SIZE;
+  log('Events incremental: modifiedSince=' + since +
+    ' (' + new Date(since * 1000).toISOString() + ')');
+
+  const seenEvents = new Set();
+  const events = [];
+  let meta = null;
+  function keepEvents (list) {
+    for (const e of list) {
+      if (e == null || e.id == null || seenEvents.has(e.id)) continue;
+      seenEvents.add(e.id);
+      events.push(e);
+    }
+  }
+
+  const eventsBase = '/events?modifiedSince=' + since +
+    '&fromTime=' + INCREMENTAL_FAR_PAST + stateAll;
+  for (const extra of ['', '&running=true']) {
+    let cursor = INCREMENTAL_FAR_FUTURE;
+    let limit = pageSize;
+    while (true) {
+      const res = await apiGetAsync(connection, eventsBase + extra +
+        '&toTime=' + cursor + '&limit=' + limit);
+      meta = res.meta || meta;
+      const page = Array.isArray(res.events) ? res.events : [];
+      keepEvents(page);
+      if (page.length < limit) break;
+      const lowest = page[page.length - 1].time;
+      if (lowest < cursor) {
+        cursor = lowest;
+        limit = pageSize;
+      } else {
+        limit *= 2;
+      }
+    }
+  }
+
+  const seenDeletions = new Set();
+  const eventDeletions = [];
+  let bound = since;
+  let limit = pageSize;
+  while (true) {
+    const res = await apiGetAsync(connection, '/events?modifiedSince=' + bound +
+      '&includeDeletions=true&sortAscending=true' +
+      '&fromTime=' + (INCREMENTAL_FAR_PAST - 2) + '&toTime=' + (INCREMENTAL_FAR_PAST - 1) +
+      '&limit=' + limit);
+    meta = res.meta || meta;
+    const page = Array.isArray(res.eventDeletions) ? res.eventDeletions : [];
+    for (const d of page) {
+      if (d == null || d.id == null || seenDeletions.has(d.id)) continue;
+      seenDeletions.add(d.id);
+      eventDeletions.push(d);
+    }
+    if (page.length < limit) break;
+    // Largest `deleted` strictly below the last one: rows on the last value
+    // are read again by the next request.
+    const last = page[page.length - 1].deleted;
+    let below = null;
+    for (const d of page) {
+      if (d.deleted < last && (below == null || d.deleted > below)) below = d.deleted;
+    }
+    if (below != null && below > bound) {
+      bound = below;
+      limit = pageSize;
+    } else {
+      limit *= 2;
+    }
+  }
+
+  log('Events incremental: ' + events.length + ' event(s), ' +
+    eventDeletions.length + ' deletion(s)');
+  const doc = { events, eventDeletions };
+  if (meta) doc.meta = meta;
+  const writeStream = writer.openWriteStream('events-incremental-' + runTs + '.json');
+  writeStream.write(new TextEncoder().encode(JSON.stringify(doc)));
+  await new Promise(function (resolve, reject) {
+    if (typeof writeStream.end !== 'function') return resolve();
+    writeStream.end(function (err) { return err ? reject(err) : resolve(); });
+  });
+  if (onEvents) {
+    try {
+      await onEvents(events);
+    } catch (err) {
+      // Ref collection is non-fatal: the file is on disk, a later run can
+      // re-pick refs via modifiedSince.
+      log('onEvents: skipped (' + (err.message || err) + ')');
+    }
+  }
+}
+
+function apiGetAsync (connection, pathAndQuery) {
+  return new Promise(function (resolve, reject) {
+    apiGet(connection, pathAndQuery, function (err, json) {
+      return err ? reject(err) : resolve(json);
+    });
+  });
+}
 
 /**
  * Discover the earliest + latest event timestamp on the subject account.
@@ -187,8 +315,9 @@ function formatLabel (date) {
   return y + '-' + m;
 }
 
-// Isomorphic fetch-based small-JSON GET. Used for the limit=1 probes; not for
-// streamed responses (those go through apiResources.toJSONFile).
+// Isomorphic fetch-based JSON GET. Used for the limit=1 probes and the
+// incremental pages; not for streamed responses (those go through
+// apiResources.toJSONFile).
 function apiGet (connection, pathAndQuery, callback) {
   const url = new URL(connection.endpoint);
   const base = url.protocol + '//' + url.host + url.pathname.replace(/\/$/, '');
@@ -198,7 +327,7 @@ function apiGet (connection, pathAndQuery, callback) {
       headers: { Authorization: connection.token }
     });
     if (res.status !== 200) {
-      throw new Error('Probe failed: ' + res.status + ' ' + (res.statusText || ''));
+      throw new Error('HTTP ' + res.status + ' ' + (res.statusText || '') + ' while fetching ' + pathAndQuery);
     }
     return await res.json();
   })().then(
@@ -213,3 +342,4 @@ exports._formatLabel = formatLabel;
 exports.FAR_PAST = FAR_PAST;
 exports.FAR_FUTURE = FAR_FUTURE;
 exports.SECONDS_PER_DAY = SECONDS_PER_DAY;
+exports.INCREMENTAL_PAGE_SIZE = INCREMENTAL_PAGE_SIZE;

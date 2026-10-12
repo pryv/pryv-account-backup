@@ -488,6 +488,7 @@ describe('[PALI] library isomorphism contract', function () {
         let yielded = false;
         return Promise.resolve({
           status: 200,
+          json: () => Promise.resolve(JSON.parse(new TextDecoder().decode(payload))),
           body: {
             getReader () {
               return {

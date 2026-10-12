@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Backup: incremental runs collect every event changed or deleted since the previous run. Before,
+  the incremental request carried no time range and no `limit`, so the server applied its default
+  cap of 20: an incremental run kept at most 20 changed events and 20 deletions and silently dropped
+  the rest, and the next run's threshold moved past them. Incremental runs now read events and
+  deletions in explicit pages, with bounds that neither skip nor repeat events sharing a timestamp,
+  include running events, and write the file only once every page is read. The file format
+  (`events-incremental-<TS>.json` with `events` and `eventDeletions`) is unchanged.
+
 ## 0.8.0 - 2026-10-08
 
 Restore reports what the target refused and exits non-zero on any refusal, restores account fields
