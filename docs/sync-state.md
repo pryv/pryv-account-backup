@@ -38,8 +38,8 @@ instead of a full chunked refetch.
 | `formatVersion` | integer | Schema version; current value is `1`. `import()` rejects unsupported versions with a clear error message. |
 | `toolVersion` | string (semver) | Version of `@pryv/account-backup` that produced the file. Diagnostic only — not enforced on import. |
 | `createdAt` | string (ISO-8601 UTC) | Wall-clock at export-time. Diagnostic only. |
-| `kv.lastRunAt` | integer (UTC seconds) | Start timestamp of the run that produced this file. Read on the next run to gate "is there prior state?". |
-| `kv.events.lastModifiedSince` | integer (UTC seconds) | The threshold for the next `events.get?modifiedSince=…` round-trip. Conservatively set to `lastRunAt` (events modified strictly *after* this point flow over the wire next time; events modified *during* the run get a small overlap on the next run, which is harmless — duplicates write identically and re-imports are idempotent at the event-id key). |
+| `kv.lastRunAt` | integer (UTC seconds) | Start timestamp of the run that produced this file, on the server's clock (`meta.serverTime` read before any data; the local clock only if the server sends none). Read on the next run to gate "is there prior state?". |
+| `kv.events.lastModifiedSince` | integer (UTC seconds) | The threshold for the next incremental `events.get?modifiedSince=…` fetch (read in pages). Conservatively set to `lastRunAt` (events modified strictly *after* this point flow over the wire next time; events modified *during* the run get a small overlap on the next run, which is harmless — duplicates write identically and re-imports are idempotent at the event-id key). |
 | `kv.audit.lastModifiedSince` | integer (UTC seconds) | Same semantics as the events threshold, applied to the `:_audit:*` streams fetch. |
 | `kv.formatVersion` / `kv.toolVersion` | int / string | Mirror of the envelope fields; recorded inside `kv` so they survive an export/import round-trip and tools that inspect only the kv tree still see them. |
 

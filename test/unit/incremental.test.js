@@ -2,7 +2,7 @@
  * @license
  * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
  */
-/*global describe, it, before, after, beforeEach */
+/* global describe, it, before, after, beforeEach, afterEach */
 
 const fs = require('fs');
 const os = require('os');
@@ -17,12 +17,10 @@ const NodeFsStorageWriter = require('../../src/lib/adapters/NodeFsStorageWriter'
 const FolderStateStore = require('../../src/lib/adapters/FolderStateStore');
 const BackupDirectory = require('../../src/methods/backup-directory');
 
-// ─── [PAIB] events-chunked incremental mode ───
+// ─── [PAIB] events-chunked initial mode ───
 //
-// The two-mode contract is enforced at the API layer: when `modifiedSince`
-// is passed, the helper makes ONE round-trip rather than N month-windows.
-// We intercept apiResources.toJSONFile so the tests don't need a real
-// Pryv account.
+// Without `modifiedSince` the helper fetches month windows through
+// apiResources.toJSONFile, intercepted here so the test needs no Pryv account.
 
 describe('[PAIB] events-chunked incremental mode', function () {
   const apiResources = require('../../src/methods/api-resources');
@@ -73,22 +71,23 @@ describe('[PAIB] events-chunked incremental mode', function () {
   });
 });
 
-// ─── [PAIP] events-chunked incremental paging ───
+// ─── Fake `events.get` server ───
 //
 // `events.get` caps a query with no time range and no `limit` at 20 events
-// (and its deletions at the same limit). The fake server below reproduces the
-// server semantics the incremental walk relies on: that default, `time`-only
-// ordering with ties in random order, `deleted`-only ordering for deletions,
-// `toTime` on `time`, `fromTime` on `endTime` (running events with a null
-// `endTime` only match while the range includes now), and `running=true`.
+// (and its deletions at the same limit). The fake reproduces the server
+// semantics the paged walks rely on: that default, `time`-only ordering with
+// ties in random order, `deleted`-only ordering for deletions, `toTime` on
+// `time`, `fromTime` on `endTime` (running events with a null `endTime` only
+// match while the range includes now), `running=true`, `state`, `streams`
+// (a stream id also matches its children), and `meta.serverTime`.
+// `store.sqliteDeletions` switches deletions to the SQLite engine's
+// behaviour: `deleted >= since`, newest first, limit / skip / order ignored.
 
-describe('[PAIP] events-chunked incremental paging', function () {
-  const restore = require('../../src/restore');
-  const SINCE = 1700000000;
-  const RUN_TS = 1700100000;
-  let originalFetch;
-  let store; // { events: [], deletions: [] }
-  let requests;
+const SINCE = 1700000000;
+const RUN_TS = 1700100000;
+
+function fakeServer () {
+  const server = { events: [], deletions: [], sqliteDeletions: false, serverTime: null, requests: [] };
 
   function shuffleTies (list, key, asc) {
     const shuffled = list.map((x) => [Math.random(), x]).sort((a, b) => a[0] - b[0]).map((p) => p[1]);
@@ -96,21 +95,27 @@ describe('[PAIP] events-chunked incremental paging', function () {
   }
 
   function serve (url) {
-    const q = new URL(url).searchParams;
-    const num = (k) => q.has(k) ? Number(q.get(k)) : null;
+    const u = new URL(url);
     const now = Date.now() / 1000;
+    const meta = { apiVersion: 'fake', serverTime: server.serverTime != null ? server.serverTime : now };
+    if (!u.pathname.endsWith('/events')) return { meta, accesses: [] };
+    const q = u.searchParams;
+    const num = (k) => q.has(k) ? Number(q.get(k)) : null;
     let fromTime = num('fromTime');
     let toTime = num('toTime');
     let limit = num('limit');
     const skip = num('skip') || 0;
     const modifiedSince = num('modifiedSince');
     const asc = q.get('sortAscending') === 'true';
+    const streams = q.has('streams') ? JSON.parse(q.get('streams')) : null;
     if (fromTime == null && toTime != null) fromTime = toTime - 86400;
     if (fromTime != null && toTime == null) toTime = now;
     if (fromTime == null && toTime == null && limit == null) limit = 20;
     const page = (list) => limit == null ? list.slice(skip) : list.slice(skip, skip + limit);
 
-    let events = store.events.filter(function (e) {
+    let events = server.events.filter(function (e) {
+      const streamIds = e.streamIds || ['diary'];
+      if (streams && !streamIds.some((s) => streams.some((p) => s === p || s.startsWith(p + ':')))) return false;
       if (modifiedSince != null && !(e.modified > modifiedSince)) return false;
       if (q.get('state') !== 'all' && e.trashed) return false;
       if (toTime != null && !(e.time <= toTime)) return false;
@@ -123,42 +128,89 @@ describe('[PAIP] events-chunked incremental paging', function () {
       return true;
     });
     events = page(shuffleTies(events, 'time', asc));
-    const body = { events, meta: { apiVersion: 'fake', serverTime: now } };
+    const body = { events, meta };
     if (modifiedSince != null && q.get('includeDeletions') === 'true') {
-      const deletions = store.deletions.filter((d) => d.deleted > modifiedSince);
-      body.eventDeletions = page(shuffleTies(deletions, 'deleted', asc));
+      if (server.sqliteDeletions) {
+        body.eventDeletions = shuffleTies(server.deletions.filter((d) => d.deleted >= modifiedSince), 'deleted', false);
+      } else {
+        body.eventDeletions = page(shuffleTies(server.deletions.filter((d) => d.deleted > modifiedSince), 'deleted', asc));
+      }
     }
     return body;
   }
 
-  beforeEach(function () {
-    store = { events: [], deletions: [] };
-    requests = [];
-    originalFetch = global.fetch;
-    global.fetch = function (url) {
-      requests.push(url);
-      // A paging loop that stops making progress fails instead of hanging.
-      if (requests.length > 200) return Promise.resolve({ status: 500, statusText: 'too many requests' });
-      const body = serve(url);
-      const encoded = new TextEncoder().encode(JSON.stringify(body));
-      let yielded = false;
-      return Promise.resolve({
-        status: 200,
-        statusText: 'OK',
-        json: () => Promise.resolve(JSON.parse(JSON.stringify(body))),
-        body: {
-          getReader () {
-            return {
-              read () {
-                if (yielded) return Promise.resolve({ done: true });
-                yielded = true;
-                return Promise.resolve({ done: false, value: encoded });
-              }
-            };
-          }
+  server.fetch = function (url) {
+    server.requests.push(url);
+    // A paging loop that stops making progress fails instead of hanging.
+    if (server.requests.length > 200) return Promise.resolve({ status: 500, statusText: 'too many requests' });
+    const body = serve(url);
+    const encoded = new TextEncoder().encode(JSON.stringify(body));
+    let yielded = false;
+    return Promise.resolve({
+      status: 200,
+      statusText: 'OK',
+      json: () => Promise.resolve(JSON.parse(JSON.stringify(body))),
+      body: {
+        getReader () {
+          return {
+            read () {
+              if (yielded) return Promise.resolve({ done: true });
+              yielded = true;
+              return Promise.resolve({ done: false, value: encoded });
+            }
+          };
         }
-      });
-    };
+      }
+    });
+  };
+
+  server.addEvents = function (n, props) {
+    const start = server.events.length;
+    for (let i = 0; i < n; i++) {
+      server.events.push(Object.assign({ id: 'e' + (start + i), time: SINCE - 1000 * (start + i), modified: SINCE + 10 + i }, props));
+    }
+  };
+
+  server.addDeletions = function (n, props) {
+    const start = server.deletions.length;
+    for (let i = 0; i < n; i++) {
+      server.deletions.push(Object.assign({ id: 'd' + (start + i), deleted: SINCE + 100 + i }, props));
+    }
+  };
+
+  return server;
+}
+
+function memoryWriter () {
+  const files = {};
+  return {
+    files,
+    openWriteStream (relPath) {
+      const chunks = [];
+      return {
+        write: (c) => chunks.push(typeof c === 'string' ? c : new TextDecoder().decode(c)),
+        end: (cb) => { files[relPath] = chunks.join(''); if (cb) cb(); }
+      };
+    },
+    exists: () => false,
+    describeTarget: () => '/mock/'
+  };
+}
+
+const FAKE_CONN = { endpoint: 'https://token@host.example.com/', token: 'token' };
+const ids = (list) => list.map((x) => x.id).sort();
+
+// ─── [PAIP] events-chunked incremental paging ───
+
+describe('[PAIP] events-chunked incremental paging', function () {
+  const restore = require('../../src/restore');
+  let originalFetch;
+  let server;
+
+  beforeEach(function () {
+    server = fakeServer();
+    originalFetch = global.fetch;
+    global.fetch = server.fetch;
   });
 
   afterEach(function () {
@@ -166,37 +218,12 @@ describe('[PAIP] events-chunked incremental paging', function () {
   });
 
   function run (options) {
-    const files = {};
-    const writer = {
-      openWriteStream (relPath) {
-        const chunks = [];
-        return {
-          write: (c) => chunks.push(typeof c === 'string' ? c : new TextDecoder().decode(c)),
-          end: (cb) => { files[relPath] = chunks.join(''); if (cb) cb(); }
-        };
-      },
-      exists: () => false,
-      describeTarget: () => '/mock/'
-    };
+    const writer = memoryWriter();
     const opts = Object.assign({ modifiedSince: SINCE, runStartedAt: RUN_TS, incrementalPageSize: 20 }, options);
     return new Promise(function (resolve, reject) {
-      eventsChunked.download({ endpoint: 'https://token@host.example.com/', token: 'token' }, writer, opts,
-        (err) => err ? reject(err) : resolve(files), () => {});
+      eventsChunked.download(FAKE_CONN, writer, opts,
+        (err) => err ? reject(err) : resolve(writer.files), () => {});
     });
-  }
-
-  function addEvents (n, props) {
-    const start = store.events.length;
-    for (let i = 0; i < n; i++) {
-      store.events.push(Object.assign({ id: 'e' + (start + i), time: SINCE - 1000 * (start + i), modified: SINCE + 10 + i }, props));
-    }
-  }
-
-  function addDeletions (n, props) {
-    const start = store.deletions.length;
-    for (let i = 0; i < n; i++) {
-      store.deletions.push(Object.assign({ id: 'd' + (start + i), deleted: SINCE + 100 + i }, props));
-    }
   }
 
   function readDoc (files) {
@@ -205,18 +232,18 @@ describe('[PAIP] events-chunked incremental paging', function () {
     return JSON.parse(files[name]);
   }
 
-  const ids = (list) => list.map((x) => x.id).sort();
+  const deletionRequests = () => server.requests.filter((u) => u.includes('includeDeletions=true'));
 
   it('collects all 45 changed events and 45 deletions with a page size of 20', async function () {
-    addEvents(45);
-    addDeletions(45);
+    server.addEvents(45);
+    server.addDeletions(45);
     const doc = readDoc(await run());
-    ids(doc.events).should.eql(ids(store.events));
-    ids(doc.eventDeletions).should.eql(ids(store.deletions));
+    ids(doc.events).should.eql(ids(server.events));
+    ids(doc.eventDeletions).should.eql(ids(server.deletions));
     doc.events.length.should.equal(45);
     doc.eventDeletions.length.should.equal(45);
     // Every request is explicitly bounded: never left to the server's default cap.
-    for (const url of requests) {
+    for (const url of server.requests) {
       url.should.match(/[?&]limit=\d+/);
       url.should.match(/[?&]fromTime=/);
       url.should.match(/[?&]toTime=/);
@@ -224,37 +251,51 @@ describe('[PAIP] events-chunked incremental paging', function () {
   });
 
   it('collects every event and deletion when more than a page share one timestamp', async function () {
-    addEvents(50, { time: SINCE - 500 });
-    addDeletions(50, { deleted: SINCE + 42 });
-    addDeletions(3);
+    server.addEvents(50, { time: SINCE - 500 });
+    server.addDeletions(50, { deleted: SINCE + 42 });
+    server.addDeletions(3);
     const doc = readDoc(await run());
     doc.events.length.should.equal(50);
     doc.eventDeletions.length.should.equal(53);
-    ids(doc.eventDeletions).should.eql(ids(store.deletions));
+    ids(doc.eventDeletions).should.eql(ids(server.deletions));
   });
 
   it('collects running events older than the first page', async function () {
-    addEvents(30);
-    addEvents(3, { time: SINCE - 900000, duration: null });
+    server.addEvents(30);
+    server.addEvents(3, { time: SINCE - 900000, duration: null });
     const doc = readDoc(await run());
-    ids(doc.events).should.eql(ids(store.events));
+    ids(doc.events).should.eql(ids(server.events));
   });
 
-  it('leaves out events not modified since the threshold, and trashed ones unless asked', async function () {
-    addEvents(25);
-    store.events.push({ id: 'old', time: SINCE - 5, modified: SINCE - 1 });
-    store.events.push({ id: 'trashed', time: SINCE - 6, modified: SINCE + 1, trashed: true });
-    readDoc(await run()).events.length.should.equal(25);
-    const all = readDoc(await run({ includeTrashed: true }));
-    all.events.length.should.equal(26);
-    all.events.map((e) => e.id).should.containEql('trashed');
+  it('collects all deletions in at most two requests when the engine ignores limit and order (SQLite)', async function () {
+    server.sqliteDeletions = true;
+    server.addDeletions(45);
+    readDoc(await run()).eventDeletions.length.should.equal(45);
+    deletionRequests().length.should.be.belowOrEqual(2);
+  });
+
+  it('stops after two deletion requests when the SQLite set is exactly one page', async function () {
+    server.sqliteDeletions = true;
+    server.addDeletions(20);
+    readDoc(await run()).eventDeletions.length.should.equal(20);
+    deletionRequests().length.should.be.belowOrEqual(2);
+  });
+
+  it('leaves out events not modified since the threshold, includes trashed ones without being asked', async function () {
+    server.addEvents(25);
+    server.events.push({ id: 'old', time: SINCE - 5, modified: SINCE - 1 });
+    server.events.push({ id: 'trashed', time: SINCE - 6, modified: SINCE + 1, trashed: true });
+    const doc = readDoc(await run());
+    doc.events.length.should.equal(26);
+    doc.events.map((e) => e.id).should.containEql('trashed');
+    doc.events.map((e) => e.id).should.not.containEql('old');
   });
 
   it('writes a document restore reads, deletions included', async function () {
-    addEvents(22);
-    addDeletions(21, {});
-    store.deletions[0].id = 'e0'; // e0 changed, then deleted
-    store.deletions[0].deleted = SINCE + 1000;
+    server.addEvents(22);
+    server.addDeletions(21, {});
+    server.deletions[0].id = 'e0'; // e0 changed, then deleted
+    server.deletions[0].deleted = SINCE + 1000;
     const doc = readDoc(await run());
     should.exist(doc.meta);
     const latest = restore.latestEventVersions(doc.events.concat(doc.eventDeletions));
@@ -263,90 +304,79 @@ describe('[PAIP] events-chunked incremental paging', function () {
   });
 
   it('hands every collected event to onEvents', async function () {
-    addEvents(41);
+    server.addEvents(41);
     let seen = null;
     await run({ onEvents: (list) => { seen = list; } });
     seen.length.should.equal(41);
   });
 });
 
-// ─── [PAAU] audit-as-events query construction ───
+// ─── [PAAU] audit-as-events paging ───
 //
-// The dedicated /audit/logs endpoint goes away in v0.6.0 — audit rows are
-// fetched via events.get on the :_audit:* store streams, which means
-// `modifiedSince` works for free.
+// Audit rows are fetched via events.get on the :_audit:* store streams, so
+// `modifiedSince` works for free, and the same default cap of 20 applies.
 
-describe('[PAAU] audit-as-events query construction', function () {
-  const apiResources = require('../../src/methods/api-resources');
-  let captured;
-  let originalToJSONFile;
-
-  before(function () {
-    originalToJSONFile = apiResources.toJSONFile;
-  });
-
-  after(function () {
-    apiResources.toJSONFile = originalToJSONFile;
-  });
+describe('[PAAU] audit-as-events paging', function () {
+  let originalFetch;
+  let server;
 
   beforeEach(function () {
-    captured = [];
-    apiResources.toJSONFile = function (params, cb) {
-      captured.push({
-        resource: params.resource,
-        filename: params.filename
-      });
-      setImmediate(cb);
-    };
+    server = fakeServer();
+    originalFetch = global.fetch;
+    global.fetch = server.fetch;
+    // Rows outside the audit streams, never part of the audit file.
+    server.addEvents(10);
   });
 
-  const fakeConn = { endpoint: 'https://token@host.example.com/', token: 'token' };
-  const fakeWriter = {
-    openWriteStream: () => ({ write: () => {}, end: (cb) => cb && cb() }),
-    exists: () => false,
-    describeTarget: () => '/mock/'
-  };
-
-  it('queries both :_audit:* top-level streams', function (done) {
-    auditAsEvents.download(fakeConn, fakeWriter, {}, function (err) {
-      should.not.exist(err);
-      captured.length.should.equal(1);
-      const decoded = decodeURIComponent(captured[0].resource.match(/streams=([^&]+)/)[1]);
-      JSON.parse(decoded).should.eql([':_audit:accesses', ':_audit:actions']);
-      done();
-    }, () => {});
+  afterEach(function () {
+    global.fetch = originalFetch;
   });
 
-  it('writes to audit_logs.json (preserving the v0.5.0 filename)', function (done) {
-    auditAsEvents.download(fakeConn, fakeWriter, {}, function (err) {
-      should.not.exist(err);
-      captured[0].filename.should.equal('audit_logs.json');
-      done();
-    }, () => {});
+  function addAudit (n, props) {
+    for (let i = 0; i < n; i++) {
+      const stream = i % 2 ? ':_audit:actions:action-events.get' : ':_audit:accesses:access-a1';
+      server.events.push(Object.assign({ id: 'a' + i, streamIds: [stream], time: SINCE - 700 * i, modified: SINCE + 5 + i }, props));
+    }
+  }
+
+  function run (options) {
+    const writer = memoryWriter();
+    const opts = Object.assign({ pageSize: 20 }, options);
+    return new Promise(function (resolve, reject) {
+      auditAsEvents.download(FAKE_CONN, writer, opts,
+        (err) => err ? reject(err) : resolve(writer.files), () => {});
+    });
+  }
+
+  it('collects all 45 audit rows on an initial run with a page size of 20, into audit_logs.json', async function () {
+    addAudit(45);
+    const files = await run();
+    Object.keys(files).should.eql(['audit_logs.json']);
+    const doc = JSON.parse(files['audit_logs.json']);
+    doc.events.length.should.equal(45);
+    doc.events.every((e) => e.streamIds[0].startsWith(':_audit:')).should.equal(true);
+    for (const url of server.requests) {
+      JSON.parse(new URL(url).searchParams.get('streams')).should.eql([':_audit:accesses', ':_audit:actions']);
+      url.should.match(/[?&]limit=\d+/);
+      url.should.match(/[?&]toTime=/);
+      url.should.not.match(/modifiedSince|includeDeletions|running/);
+    }
   });
 
-  it('omits modifiedSince on initial run (no prior state)', function (done) {
-    auditAsEvents.download(fakeConn, fakeWriter, {}, function (err) {
-      should.not.exist(err);
-      captured[0].resource.should.not.match(/modifiedSince/);
-      done();
-    }, () => {});
+  it('collects every audit row changed since the threshold into a separate incremental file', async function () {
+    addAudit(45);
+    server.events.push({ id: 'a-old', streamIds: [':_audit:actions:action-x'], time: SINCE - 3, modified: SINCE - 1 });
+    const files = await run({ modifiedSince: SINCE, runStartedAt: RUN_TS });
+    Object.keys(files).should.eql(['audit_logs-incremental-' + RUN_TS + '.json']);
+    const doc = JSON.parse(files['audit_logs-incremental-' + RUN_TS + '.json']);
+    doc.events.length.should.equal(45);
+    server.requests.every((u) => u.includes('modifiedSince=' + SINCE)).should.equal(true);
   });
 
-  it('appends modifiedSince when provided (incremental run)', function (done) {
-    auditAsEvents.download(fakeConn, fakeWriter, { modifiedSince: 1700000000 }, function (err) {
-      should.not.exist(err);
-      captured[0].resource.should.match(/modifiedSince=1700000000/);
-      done();
-    }, () => {});
-  });
-
-  it('always sets includeDeletions=true for the incremental delta', function (done) {
-    auditAsEvents.download(fakeConn, fakeWriter, {}, function (err) {
-      should.not.exist(err);
-      captured[0].resource.should.match(/includeDeletions=true/);
-      done();
-    }, () => {});
+  it('appends state=all when includeTrashed is set', async function () {
+    addAudit(3);
+    await run({ includeTrashed: true });
+    server.requests.every((u) => u.includes('state=all')).should.equal(true);
   });
 });
 
@@ -485,5 +515,56 @@ describe('[PAIB] Backup state-loading sequence', function () {
     const reread = new FolderStateStore(dir.baseDir);
     (await reread.get('lastRunAt')).should.equal(1700000000);
     (await reread.get('events.lastModifiedSince')).should.equal(1699999000);
+  });
+});
+
+// ─── [PAST] incremental threshold from the server clock ───
+
+describe('[PAST] Backup takes the incremental threshold from the server clock', function () {
+  let tmpDir;
+  let originalFetch;
+  let server;
+
+  beforeEach(function () {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-servertime-test-'));
+    server = fakeServer();
+    originalFetch = global.fetch;
+    global.fetch = server.fetch;
+  });
+
+  afterEach(function () {
+    global.fetch = originalFetch;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function runBackup () {
+    const dir = new BackupDirectory('https://token@host.example.com/', tmpDir);
+    const backup = new Backup({
+      connection: FAKE_CONN,
+      writer: new NodeFsStorageWriter(dir),
+      state: new FolderStateStore(dir.baseDir),
+      options: { includeAttachments: false, includeHfData: false, includeWebhooks: false },
+      log: () => {}
+    });
+    return new Promise((resolve, reject) => backup.run((err) => err ? reject(err) : resolve(dir)));
+  }
+
+  it('persists meta.serverTime, not the local clock, and the next run asks from there', async function () {
+    // Server clock a day behind the local one.
+    server.serverTime = Math.floor(Date.now() / 1000) - 86400 + 0.75;
+    const expected = Math.floor(server.serverTime);
+    const dir = await runBackup();
+    const state = new FolderStateStore(dir.baseDir);
+    (await state.get('lastRunAt')).should.equal(expected);
+    (await state.get('events.lastModifiedSince')).should.equal(expected);
+    (await state.get('audit.lastModifiedSince')).should.equal(expected);
+
+    server.requests.length = 0;
+    server.serverTime += 3600;
+    await runBackup();
+    const incremental = server.requests.filter((u) => u.includes('modifiedSince='));
+    incremental.length.should.be.above(0);
+    incremental.every((u) => u.includes('modifiedSince=' + expected)).should.equal(true);
+    fs.existsSync(path.join(dir.baseDir, 'events-incremental-' + Math.floor(server.serverTime) + '.json')).should.equal(true);
   });
 });

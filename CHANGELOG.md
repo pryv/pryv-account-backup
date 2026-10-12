@@ -2,13 +2,31 @@
 
 ## Unreleased
 
+Incremental runs and the audit log no longer stop at 20 rows. Output file names are unchanged,
+except that an incremental audit fetch now gets its own file.
+
 - Backup: incremental runs collect every event changed or deleted since the previous run. Before,
   the incremental request carried no time range and no `limit`, so the server applied its default
   cap of 20: an incremental run kept at most 20 changed events and 20 deletions and silently dropped
-  the rest, and the next run's threshold moved past them. Incremental runs now read events and
-  deletions in explicit pages, with bounds that neither skip nor repeat events sharing a timestamp,
-  include running events, and write the file only once every page is read. The file format
-  (`events-incremental-<TS>.json` with `events` and `eventDeletions`) is unchanged.
+  the rest, and the next run's threshold moved past them. Events and deletions are now read in
+  explicit pages, with bounds that neither skip nor repeat rows sharing a timestamp, including
+  running events, and the file is written once every page is read. On an engine that ignores the
+  limit for deletions, the deletions take one or two requests. The file format
+  (`events-incremental-<TS>.json` with `events`, `eventDeletions` and `meta`) is unchanged.
+- Backup: the audit log is complete. Its request had the same missing bounds, so `audit_logs.json`
+  held at most 20 audit rows, on the first run as on later ones; audit rows are now read in pages
+  too. An incremental run used to overwrite `audit_logs.json` with only the rows changed since the
+  previous run; it now writes them to `audit_logs-incremental-<TS>.json` and keeps the earlier
+  file. The audit request no longer asks for deletions: the server only reports deletions of the
+  account's own events, which the events backup already carries.
+- Backup: the next incremental threshold comes from the server's clock (`meta.serverTime` of an
+  `access-info` call made before any data is read) instead of the local clock. A local clock ahead
+  of the server made the next run skip changes the server stamped during the run. The local clock
+  is used only if the server sends no `meta.serverTime`.
+- Backup: incremental runs include trashed events whatever `includeTrashed` says, so an event
+  trashed since the previous run reaches the backup, and restore recreates it trashed instead of
+  keeping the earlier, untrashed copy. `includeTrashed` still decides whether the first run and the
+  audit log include trashed items.
 
 ## 0.8.0 - 2026-10-08
 

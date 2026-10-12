@@ -11,6 +11,7 @@ const webhooksExport = require('../methods/webhooks-export');
 const eventsChunked = require('../methods/events-chunked');
 const accessesHistory = require('../methods/accesses-history');
 const auditAsEvents = require('../methods/audit-as-events');
+const eventsPager = require('../methods/events-pager');
 const manifest = require('../methods/manifest');
 const pkg = require('../../package.json');
 
@@ -118,11 +119,19 @@ class Backup {
         'Pass `new FolderStateStore(backupDirectory.baseDir)`.'));
     }
 
-    const runStartedAt = Math.floor(Date.now() / 1000);
+    // The next run's `modifiedSince` threshold. Taken from the server's clock
+    // before any data is read: a client clock ahead of the server would
+    // otherwise skip changes the server stamps during this run.
+    let runStartedAt = null;
 
     let eventsModifiedSince = null;
     let auditModifiedSince = null;
     (async function loadIncrementalState () {
+      runStartedAt = await eventsPager.serverTime(connection);
+      if (runStartedAt == null) {
+        runStartedAt = Math.floor(Date.now() / 1000);
+        log('Server sent no meta.serverTime: using the local clock for the next incremental threshold');
+      }
       const prior = await state.get(STATE_KEYS.lastRunAt);
       if (prior == null) return;
       eventsModifiedSince = await state.get(STATE_KEYS.eventsLastModifiedSince);
@@ -230,7 +239,8 @@ class Backup {
         function fetchAuditAsEvents (stepDone) {
           auditAsEvents.download(connection, writer, {
             includeTrashed: params.includeTrashed,
-            modifiedSince: auditModifiedSince
+            modifiedSince: auditModifiedSince,
+            runStartedAt: runStartedAt
           }, stepDone, log);
         },
         function fetchEventsChunked (stepDone) {

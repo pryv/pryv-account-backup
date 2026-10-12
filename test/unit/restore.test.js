@@ -220,6 +220,28 @@ describe('[RSTR] restore', function () {
       report.hasFailures().should.equal(false);
     });
 
+    it('[RSD3] an event trashed in a later run is restored trashed', async function () {
+      writeBackup(backupDir, {
+        streams: [{ id: 'diary', name: 'Diary' }],
+        events: [
+          { id: 'e1', streamIds: ['diary'], type: 'note/txt', content: 'x', time: 1, modified: 10 }
+        ]
+      });
+      fs.writeFileSync(path.join(backupDir, 'events-incremental-20.json'), JSON.stringify({
+        events: [
+          { id: 'e1', streamIds: ['diary'], type: 'note/txt', content: 'x', time: 1, modified: 20, trashed: true }
+        ],
+        eventDeletions: []
+      }));
+      const conn = fakeConnection(defaultAnswer);
+      const report = await restore(conn, backupDir);
+      const created = conn.callsTo('events.create');
+      created.length.should.equal(1);
+      created[0].params.id.should.equal('e1');
+      created[0].params.trashed.should.equal(true);
+      report.hasFailures().should.equal(false);
+    });
+
     it('[RSD2] an older copy read after a newer one does not win', function () {
       restore.latestEventVersions([
         { id: 'e1', content: 'new', modified: 20 },

@@ -183,10 +183,24 @@ describe('[PALI] library isomorphism contract', function () {
       auditAsEvents.download(
         { endpoint: 'https://token@host.example.com/', token: 't' },
         fakeWriter,
-        { modifiedSince: 1700000000 },
+        {},
         function (err) {
           should.not.exist(err);
           writeCalls[0].path.should.equal('audit_logs.json');
+          done();
+        },
+        () => {}
+      );
+    });
+
+    it('writes an incremental run to its own file via the writer', function (done) {
+      auditAsEvents.download(
+        { endpoint: 'https://token@host.example.com/', token: 't' },
+        fakeWriter,
+        { modifiedSince: 1700000000, runStartedAt: 1700100000 },
+        function (err) {
+          should.not.exist(err);
+          writeCalls[0].path.should.equal('audit_logs-incremental-1700100000.json');
           done();
         },
         () => {}
