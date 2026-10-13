@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.2 - 2026-10-13
 
 - Backup: incremental runs and the audit log are written page by page as they are read, instead of
   being collected in memory and written in one piece. With the Node writer (CLI), memory no longer
