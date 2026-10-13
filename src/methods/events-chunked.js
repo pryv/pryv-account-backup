@@ -112,9 +112,11 @@ exports.download = function download (connection, writer, options, callback, log
 /**
  * Incremental fetch: every changed event (trashed included, so a trash since
  * the last run reaches restore) and every deletion since
- * `options.modifiedSince`, read in pages by events-pager. The file is written
- * once, after every page has been read, so a failed run never leaves a
- * truncated JSON document behind.
+ * `options.modifiedSince`, read in pages by events-pager. Each page is written
+ * to the file (and handed to `onEvents`) as it arrives, so memory does not grow
+ * with the number of changes. A failed run closes the file as valid JSON marked
+ * `"incomplete": true`; the run state is not advanced, so the next run reads the
+ * same changes again into its own file.
  */
 async function downloadIncremental (connection, writer, options, onEvents, log) {
   const since = options.modifiedSince;
@@ -123,25 +125,38 @@ async function downloadIncremental (connection, writer, options, onEvents, log) 
   log('Events incremental: modifiedSince=' + since +
     ' (' + new Date(since * 1000).toISOString() + ')');
 
-  const got = await pager.collectEvents(connection, 'modifiedSince=' + since + '&state=all',
-    Object.assign({ running: true }, pageOptions));
-  const gone = await pager.collectDeletions(connection, since, pageOptions);
-
-  log('Events incremental: ' + got.events.length + ' event(s), ' +
-    gone.eventDeletions.length + ' deletion(s)');
-  const doc = { events: got.events, eventDeletions: gone.eventDeletions };
-  const meta = got.meta || gone.meta;
-  if (meta) doc.meta = meta;
-  await pager.writeJSON(writer, 'events-incremental-' + runTs + '.json', doc);
-  if (onEvents) {
-    try {
-      await onEvents(got.events);
-    } catch (err) {
-      // Ref collection is non-fatal: the file is on disk, a later run can
-      // re-pick refs via modifiedSince.
-      log('onEvents: skipped (' + (err.message || err) + ')');
-    }
+  const doc = pager.openJSONDocument(writer, 'events-incremental-' + runTs + '.json');
+  let eventCount = 0;
+  let deletionCount = 0;
+  let meta = null;
+  try {
+    await doc.array('events');
+    meta = await pager.walkEvents(connection, 'modifiedSince=' + since + '&state=all',
+      Object.assign({ running: true }, pageOptions), async function (page) {
+        await doc.items(page);
+        eventCount += page.length;
+        if (onEvents) {
+          try {
+            await onEvents(page);
+          } catch (err) {
+            // Ref collection is non-fatal: the events are in the file, a later
+            // run can re-pick refs via modifiedSince.
+            log('onEvents: skipped (' + (err.message || err) + ')');
+          }
+        }
+      });
+    await doc.array('eventDeletions');
+    const deletionsMeta = await pager.walkDeletions(connection, since, pageOptions, async function (page) {
+      await doc.items(page);
+      deletionCount += page.length;
+    });
+    meta = meta || deletionsMeta;
+  } catch (err) {
+    await doc.closeIncomplete({ meta }, log);
+    throw err;
   }
+  log('Events incremental: ' + eventCount + ' event(s), ' + deletionCount + ' deletion(s)');
+  await doc.close({ meta });
 }
 
 /**

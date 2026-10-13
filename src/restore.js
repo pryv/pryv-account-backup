@@ -54,6 +54,11 @@ function readEvents (sourcePath) {
   const allEvents = [];
   for (const file of eventFiles) {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    if (parsed.incomplete) {
+      // Left by a failed incremental run: its items are real versions, and the
+      // next run read the same changes again into its own file.
+      console.log('Note: ' + path.basename(file) + ' is from an interrupted run (incomplete); using what it holds.');
+    }
     if (Array.isArray(parsed.events)) {
       for (const e of parsed.events) allEvents.push(e);
     }

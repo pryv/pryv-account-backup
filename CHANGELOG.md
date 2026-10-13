@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Backup: incremental runs and the audit log are written page by page as they are read, instead of
+  being collected in memory and written in one piece. With the Node writer (CLI), memory no longer
+  grows with the number of changes since the previous run or with the size of the audit log (a large
+  audit log could exhaust memory); a browser writer still holds each file until it is complete, but
+  no longer the parsed objects as well. A write error (disk full) now fails the run cleanly instead
+  of crashing the process. `onEvents` now receives one batch per page. A run that fails part-way closes its file as
+  valid JSON with `"incomplete": true` (the run state is not advanced, so the next run reads the
+  same changes again); restore uses what such a file holds and says so. The file format is
+  otherwise unchanged.
+
 ## 0.8.1 - 2026-10-12
 
 Incremental runs and the audit log no longer stop at 20 rows. Output file names are unchanged,

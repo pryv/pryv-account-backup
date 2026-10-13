@@ -28,6 +28,11 @@ class StorageWriter {
    * `end(cb?)`. Browser implementations adapt by buffering into a `Blob`
    * fragment per-stream and committing on `end()`.
    *
+   * Some files are written over a whole run (page by page). For those, a
+   * `write()` returning `false` is followed by waiting for `'drain'`, and an
+   * `'error'` event, when the stream has `on()`, fails the run. A stream
+   * whose `write()` never returns `false` needs neither.
+   *
    * @param {string} relPath  e.g. `events-2024-01.json`, `attachments/<eid>_foo.bin`
    * @returns {NodeJS.WritableStream}
    */

@@ -306,11 +306,78 @@ describe('[PAIP] events-chunked incremental paging', function () {
     latest.map((e) => e.id).should.not.containEql('e0');
   });
 
-  it('hands every collected event to onEvents', async function () {
+  it('hands every collected event to onEvents, page by page', async function () {
     server.addEvents(41);
-    let seen = null;
-    await run({ onEvents: (list) => { seen = list; } });
-    seen.length.should.equal(41);
+    const batches = [];
+    await run({ onEvents: (list) => { batches.push(list); } });
+    batches.length.should.be.above(1);
+    ids([].concat(...batches)).should.eql(ids(server.events));
+  });
+
+  it('writes the file page by page instead of in one piece', async function () {
+    server.addEvents(45);
+    server.addDeletions(45);
+    const writer = memoryWriter();
+    const writes = [];
+    const open = writer.openWriteStream;
+    writer.openWriteStream = (relPath) => {
+      const ws = open(relPath);
+      const write = ws.write;
+      ws.write = (c) => { writes.push(c); return write(c); };
+      return ws;
+    };
+    await new Promise(function (resolve, reject) {
+      eventsChunked.download(FAKE_CONN, writer,
+        { modifiedSince: SINCE, runStartedAt: RUN_TS, incrementalPageSize: 20 },
+        (err) => err ? reject(err) : resolve(), () => {});
+    });
+    writes.length.should.be.above(4);
+    const doc = readDoc(writer.files);
+    doc.events.length.should.equal(45);
+    doc.eventDeletions.length.should.equal(45);
+    should.not.exist(doc.incomplete);
+  });
+
+  it('closes the file as valid JSON marked incomplete when a request fails mid-run', async function () {
+    server.addEvents(45);
+    server.addDeletions(45);
+    const fetchOk = server.fetch;
+    let calls = 0;
+    global.fetch = (url, opts) => (++calls === 2)
+      ? Promise.resolve({ status: 500, statusText: 'boom', json: async () => ({}) })
+      : fetchOk(url, opts);
+    const writer = memoryWriter();
+    const err = await new Promise(function (resolve) {
+      eventsChunked.download(FAKE_CONN, writer,
+        { modifiedSince: SINCE, runStartedAt: RUN_TS, incrementalPageSize: 20 },
+        resolve, () => {});
+    });
+    should.exist(err);
+    err.message.should.match(/HTTP 500/);
+    const doc = readDoc(writer.files);
+    doc.incomplete.should.equal(true);
+    doc.events.length.should.equal(20);
+    restore.latestEventVersions(doc.events).length.should.equal(20);
+  });
+
+  it('closes the file as valid JSON marked incomplete when the deletions walk fails', async function () {
+    server.addEvents(25);
+    server.addDeletions(5);
+    const fetchOk = server.fetch;
+    global.fetch = (url, opts) => url.includes('includeDeletions=true')
+      ? Promise.resolve({ status: 503, statusText: 'busy', json: async () => ({}) })
+      : fetchOk(url, opts);
+    const writer = memoryWriter();
+    const err = await new Promise(function (resolve) {
+      eventsChunked.download(FAKE_CONN, writer,
+        { modifiedSince: SINCE, runStartedAt: RUN_TS, incrementalPageSize: 20 },
+        resolve, () => {});
+    });
+    should.exist(err);
+    const doc = readDoc(writer.files);
+    doc.incomplete.should.equal(true);
+    doc.events.length.should.equal(25);
+    doc.eventDeletions.should.eql([]);
   });
 });
 

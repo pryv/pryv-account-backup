@@ -46,10 +46,25 @@ const FAR_FUTURE = 1e12;
  * @returns {Promise<{ events: object[], meta: object|null }>}
  */
 async function collectEvents (connection, query, options) {
+  const events = [];
+  const meta = await walkEvents(connection, query, options, function (page) {
+    for (const e of page) events.push(e);
+  });
+  return { events, meta };
+}
+
+/**
+ * Same walk as `collectEvents`, handing each page's new events to `onPage`
+ * (awaited) instead of keeping them, so memory stays flat whatever the size of
+ * the result. Only the ids already seen are kept, for de-duplication.
+ *
+ * @param {function(object[]): (void|Promise)} onPage
+ * @returns {Promise<object|null>} the first `meta` the server sent
+ */
+async function walkEvents (connection, query, options, onPage) {
   options = options || {};
   const pageSize = options.pageSize || PAGE_SIZE;
   const seen = new Set();
-  const events = [];
   let meta = null;
   const base = '/events?' + (query ? query + '&' : '') + 'fromTime=' + FAR_PAST;
   const walks = options.running ? ['', '&running=true'] : [''];
@@ -60,11 +75,13 @@ async function collectEvents (connection, query, options) {
       const res = await getJSON(connection, base + extra + '&toTime=' + cursor + '&limit=' + limit);
       meta = meta || res.meta || null;
       const page = Array.isArray(res.events) ? res.events : [];
+      const fresh = [];
       for (const e of page) {
         if (e == null || e.id == null || seen.has(e.id)) continue;
         seen.add(e.id);
-        events.push(e);
+        fresh.push(e);
       }
+      if (fresh.length > 0) await onPage(fresh);
       if (page.length !== limit) break;
       const lowest = page[page.length - 1].time;
       if (lowest < cursor) {
@@ -75,7 +92,7 @@ async function collectEvents (connection, query, options) {
       }
     }
   }
-  return { events, meta };
+  return meta;
 }
 
 /**
@@ -91,10 +108,23 @@ async function collectEvents (connection, query, options) {
  * @returns {Promise<{ eventDeletions: object[], meta: object|null }>}
  */
 async function collectDeletions (connection, since, options) {
+  const eventDeletions = [];
+  const meta = await walkDeletions(connection, since, options, function (page) {
+    for (const d of page) eventDeletions.push(d);
+  });
+  return { eventDeletions, meta };
+}
+
+/**
+ * Same walk as `collectDeletions`, handing each page's new deletions to
+ * `onPage` (awaited). See `walkEvents`.
+ *
+ * @returns {Promise<object|null>} the first `meta` the server sent
+ */
+async function walkDeletions (connection, since, options, onPage) {
   options = options || {};
   const pageSize = options.pageSize || PAGE_SIZE;
   const seen = new Set();
-  const eventDeletions = [];
   let meta = null;
   let bound = since;
   let limit = pageSize;
@@ -105,11 +135,13 @@ async function collectDeletions (connection, since, options) {
       '&limit=' + limit);
     meta = meta || res.meta || null;
     const page = Array.isArray(res.eventDeletions) ? res.eventDeletions : [];
+    const fresh = [];
     for (const d of page) {
       if (d == null || d.id == null || seen.has(d.id)) continue;
       seen.add(d.id);
-      eventDeletions.push(d);
+      fresh.push(d);
     }
+    if (fresh.length > 0) await onPage(fresh);
     if (page.length !== limit) break;
     // Largest `deleted` strictly below the last one: rows on the last value
     // are read again by the next request.
@@ -125,7 +157,7 @@ async function collectDeletions (connection, since, options) {
       limit *= 2;
     }
   }
-  return { eventDeletions, meta };
+  return meta;
 }
 
 /**
@@ -141,15 +173,94 @@ async function serverTime (connection) {
 }
 
 /**
- * Write `doc` as one JSON file through a StorageWriter.
+ * Write one JSON object through a StorageWriter piece by piece, so arrays of
+ * any length never sit in memory: `{` on open, then `array(key)` /
+ * `items(list)` for each array (in order), then `close(fields)` appends the
+ * scalar `fields` and the closing `}`. Waits for `'drain'` when the stream
+ * asks for it.
+ *
+ * A failed run should still `close({ incomplete: true })`: the file stays
+ * valid JSON (every item in it is a real version, so restore can use it), and
+ * the flag tells a reader it is short.
  */
-async function writeJSON (writer, relPath, doc) {
+function openJSONDocument (writer, relPath) {
   const writeStream = writer.openWriteStream(relPath);
-  writeStream.write(new TextEncoder().encode(JSON.stringify(doc)));
-  await new Promise(function (resolve, reject) {
-    if (typeof writeStream.end !== 'function') return resolve();
-    writeStream.end(function (err) { return err ? reject(err) : resolve(); });
-  });
+  const encoder = new TextEncoder();
+  let fieldCount = 0;
+  let inArray = false;
+  let itemCount = 0;
+  let closed = false;
+  // The stream stays open for the whole run: a write error (disk full, ...)
+  // must reach the caller, not crash the process as an unhandled 'error'
+  // event, nor leave a wait for 'drain' hanging.
+  let failure = null;
+  let wake = null;
+  if (typeof writeStream.on === 'function') {
+    writeStream.on('error', function (err) {
+      failure = failure || err;
+      if (wake) wake();
+    });
+  }
+
+  async function put (text) {
+    if (failure) throw failure;
+    const accepted = writeStream.write(encoder.encode(text));
+    if (accepted === false && typeof writeStream.once === 'function') {
+      await new Promise(function (resolve) {
+        wake = resolve;
+        writeStream.once('drain', resolve);
+      });
+      wake = null;
+    }
+    if (failure) throw failure;
+  }
+  function key (name) {
+    return (fieldCount++ ? ',' : '') + JSON.stringify(name) + ':';
+  }
+  const opened = put('{');
+  opened.catch(function () {}); // awaited by every method below, which rethrow
+
+  return {
+    async array (name) {
+      await opened;
+      await put((inArray ? ']' : '') + key(name) + '[');
+      inArray = true;
+      itemCount = 0;
+    },
+    async items (list) {
+      await opened;
+      if (list.length === 0) return;
+      await put((itemCount ? ',' : '') + list.map(function (x) { return JSON.stringify(x); }).join(','));
+      itemCount += list.length;
+    },
+    async close (fields) {
+      if (closed) return;
+      closed = true;
+      await opened;
+      let tail = inArray ? ']' : '';
+      inArray = false;
+      for (const name of Object.keys(fields || {})) {
+        if (fields[name] != null) tail += key(name) + JSON.stringify(fields[name]);
+      }
+      await put(tail + '}');
+      await new Promise(function (resolve, reject) {
+        if (typeof writeStream.end !== 'function') return resolve();
+        wake = function () { reject(failure); };
+        writeStream.end(function (err) { return err ? reject(err) : resolve(); });
+      });
+      wake = null;
+      if (failure) throw failure;
+    },
+    // For a failed run: close with `incomplete: true`, never throw (the
+    // caller rethrows the original error).
+    async closeIncomplete (fields, log) {
+      try {
+        await this.close(Object.assign({}, fields, { incomplete: true }));
+      } catch (err) {
+        if (log) log('Could not close ' + relPath + ' (' + (err.message || err) + ')');
+      }
+    }
+  };
 }
 
 /**
@@ -185,8 +296,10 @@ module.exports = {
   FAR_FUTURE,
   collectEvents,
   collectDeletions,
+  walkEvents,
+  walkDeletions,
   serverTime,
-  writeJSON,
+  openJSONDocument,
   toCallback,
   getJSON
 };

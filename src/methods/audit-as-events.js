@@ -72,11 +72,23 @@ async function downloadAudit (connection, writer, options, log) {
   const filename = incremental
     ? 'audit_logs-incremental-' + (options.runStartedAt || Math.floor(Date.now() / 1000)) + '.json'
     : 'audit_logs.json';
-  const got = await pager.collectEvents(connection, query, { pageSize: options.pageSize, running: true });
-  log('Audit log: ' + got.events.length + ' event(s) to ' + filename);
-  const doc = { events: got.events };
-  if (got.meta) doc.meta = got.meta;
-  await pager.writeJSON(writer, filename, doc);
+  // Written page by page: an audit log can be far larger than memory.
+  const doc = pager.openJSONDocument(writer, filename);
+  let count = 0;
+  let meta = null;
+  try {
+    await doc.array('events');
+    meta = await pager.walkEvents(connection, query, { pageSize: options.pageSize, running: true },
+      async function (page) {
+        await doc.items(page);
+        count += page.length;
+      });
+  } catch (err) {
+    await doc.closeIncomplete({ meta }, log);
+    throw err;
+  }
+  log('Audit log: ' + count + ' event(s) to ' + filename);
+  await doc.close({ meta });
 }
 
 exports.STREAMS_PARAM = STREAMS_PARAM;

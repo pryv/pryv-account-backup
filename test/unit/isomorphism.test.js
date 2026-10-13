@@ -529,6 +529,7 @@ describe('[PALI] library isomorphism contract', function () {
         },
         function (err) {
           should.not.exist(err);
+          // One batch per page: the two events fit in one.
           receivedBatches.length.should.equal(1);
           receivedBatches[0].length.should.equal(2);
           receivedBatches[0][0].id.should.equal('e1');
