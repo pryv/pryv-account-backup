@@ -4,8 +4,8 @@
  */
 /**
  * ESLint flat config using neostandard (StandardJS with semicolons).
- * The per-method modules run in Node and in the browser, so both global sets
- * are declared.
+ * Node globals everywhere; browser globals only where the isomorphic modules
+ * live (and in tests, which exercise them); mocha globals only in tests.
  */
 const neostandard = require('neostandard');
 const globals = require('globals');
@@ -28,9 +28,16 @@ module.exports = [
       ecmaVersion: 2022,
       sourceType: 'commonjs',
       globals: {
-        ...globals.node,
-        ...globals.browser,
-        ...globals.mocha
+        ...globals.node
+      }
+    }
+  },
+
+  {
+    files: ['src/methods/**/*.js', 'src/lib/**/*.js'],
+    languageOptions: {
+      globals: {
+        ...globals.browser
       }
     }
   },
@@ -38,6 +45,12 @@ module.exports = [
   // Test files: should.js assertions read as bare expressions.
   {
     files: ['test/**/*.js'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.mocha
+      }
+    },
     rules: {
       'no-unused-expressions': 'off'
     }
