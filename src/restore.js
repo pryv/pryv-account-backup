@@ -397,6 +397,13 @@ async function restoreSeriesEvents (connection, seriesEvents, sourcePath, report
   }
 }
 
+// fs.openAsBlob (Node 19.8+) reads the file from disk as the upload is sent,
+// so a large attachment is not held in memory; Node 18 falls back to a read.
+async function fileAsBlob (filepath, type) {
+  if (typeof fs.openAsBlob === 'function') return fs.openAsBlob(filepath, { type });
+  return new Blob([await fs.promises.readFile(filepath)], { type });
+}
+
 async function uploadEventsWithAttachments (connection, eventsWithAttachments, sourcePath, report) {
   const res = [];
   for (let i = 0; i < eventsWithAttachments.length; i++) {
@@ -408,27 +415,16 @@ async function uploadEventsWithAttachments (connection, eventsWithAttachments, s
     delete e.attachments;
     delete e.oldId;
     try {
-      let result;
-      if (attachmentCount === 1) {
-        // Single-attachment path — keep using createEventWithFile for the
-        // simplest case (no FormData ceremony required).
-        const a = attachmentList[0];
+      // One POST /events with one file part per attachment, each named with
+      // its original fileName. The backup stores files on disk as
+      // <eventId>_<fileName>; createEventWithFile would upload under that
+      // on-disk name, so it is not used even for a single attachment.
+      const formData = new FormData();
+      for (const a of attachmentList) {
         const filepath = path.join(sourcePath, 'attachments', fileId + '_' + a.fileName);
-        result = await connection.createEventWithFile(e, filepath);
-      } else {
-        // Multi-attachment restore via pryv@3's createEventWithFormData.
-        // Native Node 18+ FormData + fs.openAsBlob upload N file parts in a
-        // single POST /events call.
-        const formData = new FormData();
-        for (const a of attachmentList) {
-          const filepath = path.join(sourcePath, 'attachments', fileId + '_' + a.fileName);
-          const mimeType = a.type || 'application/octet-stream';
-          const fileBlob = await fs.promises.readFile(filepath)
-            .then((buf) => new Blob([buf], { type: mimeType }));
-          formData.append('file', fileBlob, a.fileName);
-        }
-        result = await connection.createEventWithFormData(e, formData);
+        formData.append('file', await fileAsBlob(filepath, a.type || 'application/octet-stream'), a.fileName);
       }
+      const result = await connection.createEventWithFormData(e, formData);
       res.push(result);
       report.recordCall('events with attachments', fileId, result);
     } catch (err) {

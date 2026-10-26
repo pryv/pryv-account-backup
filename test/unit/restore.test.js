@@ -16,8 +16,27 @@ const restore = require('../../src/restore');
 
 function fakeConnection (answer) {
   const sent = [];
+  const uploads = []; // one { event, files: [{ name, type, content }] } per upload
   return {
     sent,
+    uploads,
+    // Mirrors pryv's createEventWithFile: the file is uploaded under the
+    // path's basename.
+    async createEventWithFile (event, filePath) {
+      uploads.push({
+        event,
+        files: [{ name: path.basename(filePath), content: fs.readFileSync(filePath, 'utf-8') }]
+      });
+      return { event: { id: event.id } };
+    },
+    async createEventWithFormData (event, formData) {
+      const files = [];
+      for (const [field, value] of formData.entries()) {
+        if (field === 'file') files.push({ name: value.name, type: value.type, content: await value.text() });
+      }
+      uploads.push({ event, files });
+      return { event: { id: event.id } };
+    },
     async api (calls) {
       const results = [];
       for (const call of calls) {
@@ -247,6 +266,63 @@ describe('[RSTR] restore', function () {
         { id: 'e1', content: 'new', modified: 20 },
         { id: 'e1', content: 'old', modified: 10 }
       ]).map((e) => e.content).should.eql(['new']);
+    });
+  });
+
+  describe('[RSFI] attachment files', function () {
+    // The backup stores each file as attachments/<eventId>_<fileName>; the
+    // restored attachment must carry the original fileName.
+    function writeAttachment (eventId, fileName, content) {
+      fs.mkdirSync(path.join(backupDir, 'attachments'), { recursive: true });
+      fs.writeFileSync(path.join(backupDir, 'attachments', eventId + '_' + fileName), content);
+    }
+
+    it('[RSF1] a single attachment is uploaded under its original file name', async function () {
+      writeBackup(backupDir, {
+        streams: [{ id: 'diary', name: 'Diary' }],
+        events: [{
+          id: 'q0cu8sbvzmnwyjmg8bv2clfp',
+          streamIds: ['diary'],
+          type: 'note/txt',
+          content: 'with file',
+          time: 1,
+          attachments: [{ id: 'att1', fileName: 'rt-attachment.txt', type: 'text/plain', size: 5 }]
+        }]
+      });
+      writeAttachment('q0cu8sbvzmnwyjmg8bv2clfp', 'rt-attachment.txt', 'hello');
+      const conn = fakeConnection(defaultAnswer);
+      const report = await restore(conn, backupDir);
+      conn.uploads.length.should.equal(1);
+      conn.uploads[0].event.id.should.equal('q0cu8sbvzmnwyjmg8bv2clfp');
+      should.not.exist(conn.uploads[0].event.attachments);
+      conn.uploads[0].files.map((f) => [f.name, f.content])
+        .should.eql([['rt-attachment.txt', 'hello']]);
+      report.hasFailures().should.equal(false);
+    });
+
+    it('[RSF2] several attachments are uploaded in one call, each under its original file name', async function () {
+      writeBackup(backupDir, {
+        streams: [{ id: 'diary', name: 'Diary' }],
+        events: [{
+          id: 'ev-two',
+          streamIds: ['diary'],
+          type: 'note/txt',
+          content: 'with files',
+          time: 1,
+          attachments: [
+            { id: 'att1', fileName: 'a.txt', type: 'text/plain', size: 1 },
+            { id: 'att2', fileName: 'b.json', type: 'application/json', size: 2 }
+          ]
+        }]
+      });
+      writeAttachment('ev-two', 'a.txt', 'A');
+      writeAttachment('ev-two', 'b.json', '{}');
+      const conn = fakeConnection(defaultAnswer);
+      const report = await restore(conn, backupDir);
+      conn.uploads.length.should.equal(1);
+      conn.uploads[0].files.map((f) => [f.name, f.type, f.content])
+        .should.eql([['a.txt', 'text/plain', 'A'], ['b.json', 'application/json', '{}']]);
+      report.hasFailures().should.equal(false);
     });
   });
 
