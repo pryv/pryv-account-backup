@@ -21,14 +21,15 @@ const raw = JSON.parse(fs.readFileSync(path.resolve(configFile), 'utf8'));
 const params = raw.params;
 
 try {
-    new URL(params.serviceInfoUrl); // Check if params.serviceInfoUrl is a valid url
-}
-catch(error) {
-    console.error(error);
-    return;
+  // Constructing the URL is the validity check; the object is not needed.
+  // eslint-disable-next-line no-new
+  new URL(params.serviceInfoUrl);
+} catch (error) {
+  console.error(error);
+  return;
 }
 
 params.backupDirectory = new BackupDirectory(params.username);
 backup.start(params, () => {
-    console.log('Backup completed');
+  console.log('Backup completed');
 });

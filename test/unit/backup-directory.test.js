@@ -2,47 +2,46 @@
  * @license
  * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
  */
-/*global describe, it, before, after */
+/* global describe, it, before, after */
 
 const Directory = require('../../src/methods/backup-directory');
 const testuser = require('../helpers/testuser');
-const credentials = testuser.credentials
+const credentials = testuser.credentials;
 const fs = require('fs');
 const should = require('should');
 const Pryv = require('pryv');
 
 describe('backup-directory', function () {
+  let BackupDirectory = null;
 
-    let BackupDirectory = null;
+  before(function (done) {
+    if (!testuser.requireLiveAccount(this, 'backup-directory')) return;
+    const service = new Pryv.Service(credentials.serviceInfoUrl);
+    service.login(credentials.username, credentials.password, 'bkp-test').then((connection) => {
+      BackupDirectory = new Directory(connection.apiEndpoint);
+      BackupDirectory.deleteDirs(done);
+    }, done);
+  });
 
-    before(function (done) {
-        if (!testuser.requireLiveAccount(this, 'backup-directory')) return;
-        const service = new Pryv.Service(credentials.serviceInfoUrl);
-        service.login(credentials.username, credentials.password, 'bkp-test').then((connection) => {
-          BackupDirectory = new Directory(connection.apiEndpoint);
-          BackupDirectory.deleteDirs(done);
-        }, done);
+  after(function (done) {
+    if (!BackupDirectory) return done();
+    BackupDirectory.deleteDirs(done);
+  });
+
+  it('should create and delete the backup directories', function (done) {
+    should.exists(BackupDirectory.baseDir);
+    should.exists(BackupDirectory.attachmentsDir);
+    should.exists(BackupDirectory.eventsFile);
+    BackupDirectory.createDirs(function (err) {
+      should.not.exists(err);
+      fs.existsSync(BackupDirectory.baseDir).should.equal(true);
+      fs.existsSync(BackupDirectory.attachmentsDir).should.equal(true);
+      BackupDirectory.deleteDirs(function (err) {
+        should.not.exists(err);
+        fs.existsSync(BackupDirectory.baseDir).should.equal(false);
+        fs.existsSync(BackupDirectory.attachmentsDir).should.equal(false);
+        done();
+      });
     });
-
-    after(function (done) {
-        if (!BackupDirectory) return done();
-        BackupDirectory.deleteDirs(done);
-    });
-
-    it('should create and delete the backup directories', function (done) {
-        should.exists(BackupDirectory.baseDir);
-        should.exists(BackupDirectory.attachmentsDir);
-        should.exists(BackupDirectory.eventsFile);
-        BackupDirectory.createDirs(function(err) {
-            should.not.exists(err);
-            fs.existsSync(BackupDirectory.baseDir).should.equal(true);
-            fs.existsSync(BackupDirectory.attachmentsDir).should.equal(true);
-            BackupDirectory.deleteDirs(function(err) {
-                should.not.exists(err);
-                fs.existsSync(BackupDirectory.baseDir).should.equal(false);
-                fs.existsSync(BackupDirectory.attachmentsDir).should.equal(false);
-                done();
-            });
-        });
-    });
+  });
 });

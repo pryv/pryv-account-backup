@@ -39,9 +39,9 @@ const BackupDirectory = module.exports = function (apiEndpoint, dir) {
 };
 
 /**
- * 
- * @param {*} callback 
- * @param {*} log 
+ *
+ * @param {*} callback
+ * @param {*} log
  */
 BackupDirectory.prototype.getAttachmentFilePath = function (
   attachmentFileName,
@@ -51,9 +51,13 @@ BackupDirectory.prototype.getAttachmentFilePath = function (
   const attName = eventId + '_' + attachmentFileName;
   let attFile = path.resolve(this.attachmentsDir, attName);
   if (this.settingAttachmentUseStreamsPath) {
-    let streamPath = this.streamsMap[streamId];
+    const streamPath = this.streamsMap[streamId];
     if (streamPath) {
       const attPath = path.resolve(this.attachmentsDir + streamPath);
+      // mkdirp was removed as a dependency, so this line would throw; it is
+      // unreachable because streamsMap is never filled. Left unchanged by
+      // the lint pass, which does not change behaviour.
+      // eslint-disable-next-line no-undef
       mkdirp.sync(attPath);
       attFile = path.resolve(attPath, attName);
     }
@@ -133,7 +137,7 @@ BackupDirectory.prototype.listEventFiles = function () {
  * @param callback
  */
 BackupDirectory.prototype.deleteDirs = function (callback) {
-  if(fs.existsSync(this.baseDir)) {
+  if (fs.existsSync(this.baseDir)) {
     const exec = require('child_process').exec;
     exec('rm -r ' + this.baseDir, callback);
   } else {

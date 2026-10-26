@@ -82,7 +82,7 @@ function writeOutput (writer, accessesScanned, webhooks, log, callback) {
   const out = {
     generated_at: new Date().toISOString(),
     accesses_scanned: accessesScanned,
-    webhooks: webhooks
+    webhooks
   };
   const writeStream = writer.openWriteStream('webhooks.json');
   writeStream.write(JSON.stringify(out, null, 2));

@@ -49,9 +49,9 @@ exports.download = function download (connection, writer, accessesArray, callbac
     const accessId = access && access.id;
     if (!accessId) return next();
     apiResources.toJSONFile({
-      writer: writer,
+      writer,
       resource: 'accesses/' + encodeURIComponent(accessId) + '?includeHistory=true',
-      connection: connection,
+      connection,
       filename: 'accesses-history/' + encodeURIComponent(accessId) + '.json'
     }, function (err) {
       if (err) {

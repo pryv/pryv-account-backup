@@ -11,7 +11,7 @@ const path = require('path');
 
 const context = {};
 
-function exit(msg) {
+function exit (msg) {
   console.error('Error:' + msg);
   console.log('Usage node src/change-dates.js <directory> <deltaTimeInSeconds>');
   process.exit(0);
@@ -24,13 +24,12 @@ if (process.argv[2]) {
   context.streamsFile = path.join(context.dir, 'streams.json');
   if (!fs.existsSync(context.eventsFile)) { // skip
     exit('Directory [' + context.dir + '] is not a valid directory');
-   
   } else {
     context.backupSource = context.dir;
   }
   const deltaTime = Number.parseInt(process.argv[3]);
   if (!deltaTime || isNaN(deltaTime)) {
-   exit('Second argument must be ');
+    exit('Second argument must be ');
   }
   context.deltaTime = deltaTime;
 }
@@ -38,7 +37,7 @@ if (process.argv[2]) {
 const stats = {
   minDate: Number.MAX_SAFE_INTEGER,
   maxDate: 0,
-}
+};
 
 const events = JSON.parse(fs.readFileSync(context.eventsFile, 'utf-8')).events;
 
