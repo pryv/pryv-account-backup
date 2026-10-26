@@ -54,11 +54,7 @@ BackupDirectory.prototype.getAttachmentFilePath = function (
     const streamPath = this.streamsMap[streamId];
     if (streamPath) {
       const attPath = path.resolve(this.attachmentsDir + streamPath);
-      // mkdirp was removed as a dependency, so this line would throw; it is
-      // unreachable because streamsMap is never filled. Left unchanged by
-      // the lint pass, which does not change behaviour.
-      // eslint-disable-next-line no-undef
-      mkdirp.sync(attPath);
+      fs.mkdirSync(attPath, { recursive: true });
       attFile = path.resolve(attPath, attName);
     }
   }
