@@ -103,7 +103,7 @@ drain step      │ attachments.download │  fetch + write + markDone
 - **Restore-side reproducibility for audit / webhooks / accesses.** These are **deliberately not replayed** on restore — they're system-generated or carry server-minted tokens. The webapp does not expose restore at all; the CLI restore is marked experimental.
 - **Adding a server-side endpoint to open-pryv.io.** This tool calls the public API; it is not a core feature. The historical alternative (an `account.export` core endpoint) was explicitly rejected in favor of the library + sample webapp architecture.
 - **Removing the `manifest.json` from CLI output.** The sha256 manifest is the third-party-auditor tamper-evidence story for the CLI. The webapp's lack of a manifest is a deliberate trade-off documented in `pryv-account-backup-webapp/README.md`.
-- **Bumping the `pryv` lib-js major version.** The library calls `Service.login`, `Connection.api`, `addPointsToHFEvent`, `createEventWithFile`, `createEventWithFormData`. A major bump on lib-js needs a careful read of every consumer + the deps section in `package.json`.
+- **Bumping the `pryv` lib-js major version.** The library calls `Service.login`, `Connection.api`, `addPointsToHFEvent`, `createEventWithFormData`. A major bump on lib-js needs a careful read of every consumer + the deps section in `package.json`.
 
 ## Build + test cadence
 
