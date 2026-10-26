@@ -2,12 +2,12 @@
  * @license
  * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
  */
-/*global describe, it, before, after */
+/* global describe, it, before, after */
 
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const should = require('should');
+require('should'); // extends Object.prototype with `.should`
 const eventsChunked = require('../../src/methods/events-chunked');
 const Directory = require('../../src/methods/backup-directory');
 

@@ -29,6 +29,7 @@
     "license": "source-licenser --config-file .licenser.yml ./",
     "restore": "node scripts/start-restore.js",
     "start": "node scripts/start-backup.js",
+    "lint": "eslint .",
     "test": "mocha test/**/*.test.js",
     "test-travis": "./node_modules/istanbul/lib/cli.js cover ./node_modules/./bin/_mocha -- -R spec ./test/**/*.test.js"
   },
@@ -39,7 +40,10 @@
   },
   "devDependencies": {
     "esbuild": "^0.28.1",
+    "eslint": "^9.39.5",
+    "globals": "^15.15.0",
     "mocha": "^11.7.6",
+    "neostandard": "^0.12.2",
     "should": "^13.2.3",
     "source-licenser": "^2.0.6",
     "superagent": "^10.3.0"
@@ -49,6 +53,6 @@
   },
   "overrides": {
     "diff": "^9.0.0",
-    "serialize-javascript": "^7.0.5"
+    "serialize-javascript": "^7.1.4"
   }
 }

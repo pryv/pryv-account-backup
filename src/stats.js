@@ -28,7 +28,7 @@ const stats = {
   maxDate: 0,
   eventsCount: events.length,
   streamsCount: 0
-}
+};
 
 for (const event of events) {
   if (event.time < stats.minDate) stats.minDate = event.time;

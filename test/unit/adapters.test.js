@@ -2,7 +2,7 @@
  * @license
  * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
  */
-/*global describe, it, before, after */
+/* global describe, it, before, after */
 
 const fs = require('fs');
 const os = require('os');
@@ -278,16 +278,14 @@ describe('lib adapters', function () {
     it('import() rejects an unrecognized format', async function () {
       const s = new FolderStateStore(tmpDir);
       let threw = false;
-      try { await s.import({ format: 'something-else', formatVersion: 1, kv: {} }); }
-      catch (e) { threw = /format/.test(e.message); }
+      try { await s.import({ format: 'something-else', formatVersion: 1, kv: {} }); } catch (e) { threw = /format/.test(e.message); }
       threw.should.equal(true);
     });
 
     it('import() rejects an unsupported formatVersion', async function () {
       const s = new FolderStateStore(tmpDir);
       let threw = false;
-      try { await s.import({ format: 'pryv-account-backup-sync-state', formatVersion: 99, kv: {} }); }
-      catch (e) { threw = /formatVersion/.test(e.message); }
+      try { await s.import({ format: 'pryv-account-backup-sync-state', formatVersion: 99, kv: {} }); } catch (e) { threw = /formatVersion/.test(e.message); }
       threw.should.equal(true);
     });
 

@@ -230,10 +230,10 @@ class Backup {
           ];
           async.mapSeries(resources, function (item, cb) {
             apiResources.toJSONFile({
-              writer: writer,
+              writer,
               resource: item.res,
               extraFileName: item.extra || '',
-              connection: connection,
+              connection,
               onParsed: item.onParsed
             }, cb, log);
           }, done);
@@ -242,14 +242,14 @@ class Backup {
           auditAsEvents.download(connection, writer, {
             includeTrashed: params.includeTrashed,
             modifiedSince: auditModifiedSince,
-            runStartedAt: runStartedAt
+            runStartedAt
           }, stepDone, log);
         },
         function fetchEventsChunked (stepDone) {
           eventsChunked.download(connection, writer, {
             includeTrashed: params.includeTrashed,
             modifiedSince: eventsModifiedSince,
-            runStartedAt: runStartedAt,
+            runStartedAt,
             fromTime: params.fromTime,
             toTime: params.toTime,
             chunkMonths: params.eventsChunkMonths,
@@ -261,7 +261,7 @@ class Backup {
           async.mapSeries(accessesData.accesses, function (access, cb) {
             if (access.type !== 'app') return cb();
             apiResources.toJSONFile({
-              writer: writer,
+              writer,
               resource: 'profile/app',
               extraFileName: '_' + access.id,
               filename: 'app_profiles/profile_app_' + access.id + '.json',

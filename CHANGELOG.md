@@ -10,6 +10,10 @@
   instead of being loaded into memory first.
 - Requires Node 20 or later (`engines` was `>=18`). The `pryv` dependency already required Node
   20, so the tool never ran on Node 18.
+- Development: `npm run lint` checks the code with ESLint and neostandard (semicolons), and the
+  sources follow that style. The style pass changes no behaviour; separately, the per-stream
+  attachment folder path, which still called a removed dependency (`mkdirp`), now creates its
+  folder with `fs.mkdirSync` (that path is not reached by today's backups).
 
 ## 0.8.2 - 2026-10-13
 

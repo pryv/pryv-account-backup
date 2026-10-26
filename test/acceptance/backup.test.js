@@ -2,7 +2,7 @@
  * @license
  * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
  */
-/*global describe, it, before, after */
+/* global describe, it, before, after */
 
 const backup = require('../../src/main');
 const testuser = require('../helpers/testuser');
@@ -11,10 +11,8 @@ const async = require('async');
 const fs = require('fs');
 const should = require('should');
 const superagent = require('superagent');
-const Pryv = require('pryv');
 
 describe('backup', function () {
-
   this.timeout(10000);
 
   let settings = null;
@@ -56,78 +54,77 @@ describe('backup', function () {
   });
 
   it('[SBTC] should backup the correct folders and files', function (done) {
-    const time = Date.now()/1000;
+    const time = Date.now() / 1000;
     async.series([
-        function startBackup(stepDone) {
-          backup.start(settings, stepDone);
-        },
-        function checkFiles(stepDone) {
-          resources.forEach(function(resource){
-            const outputFilename = resource.replace('/', '_').split('?')[0] + '.json';
-            const fullPath = settings.backupDirectory.baseDir + '/' + outputFilename;
-            fs.existsSync(fullPath).should.equal(true, 'Cannot find ' + fullPath);
-          });
-          stepDone();
-        },
-        function checkAttachments(stepDone) {
-          const events = JSON.parse(fs.readFileSync(settings.backupDirectory.eventsFile, 'utf8'));
-          events.events.forEach(function (event) {
-            if (event.attachments) {
-              event.attachments.forEach(function (att) {
-                const attFile = settings.backupDirectory.getAttachmentFilePath(att.fileName, event.id, event.streamIds[0])
-                fs.existsSync(attFile).should.equal(true, 'Cannot find ' + attFile);
-              });
-            }
-          });
-          stepDone();
-        },
-        // The DSAR-extension artefacts must also be present.
-        function checkDsarArtifacts(stepDone) {
-          fs.existsSync(settings.backupDirectory.webhooksFile).should.equal(true, 'webhooks.json missing');
-          fs.existsSync(settings.backupDirectory.manifestFile).should.equal(true, 'manifest.json missing');
-          fs.existsSync(settings.backupDirectory.auditLogsFile).should.equal(true, 'audit_logs.json missing');
-          // hf-data dir only exists if the account has series events; tolerate absence.
-          stepDone();
-        },
-        function checkContent(stepDone) {
-          async.each(resources,
-              function (resource, callback) {
-                superagent.get(connection.endpoint + resource)
-                  .set('Authorization', connection.token)
-                  .then(result => {
-                    let outputFilename = resource.replace('/', '_').split('?')[0];
-                    const json = JSON.parse(fs.readFileSync(settings.backupDirectory.baseDir + outputFilename + '.json', 'utf8'));
+      function startBackup (stepDone) {
+        backup.start(settings, stepDone);
+      },
+      function checkFiles (stepDone) {
+        resources.forEach(function (resource) {
+          const outputFilename = resource.replace('/', '_').split('?')[0] + '.json';
+          const fullPath = settings.backupDirectory.baseDir + '/' + outputFilename;
+          fs.existsSync(fullPath).should.equal(true, 'Cannot find ' + fullPath);
+        });
+        stepDone();
+      },
+      function checkAttachments (stepDone) {
+        const events = JSON.parse(fs.readFileSync(settings.backupDirectory.eventsFile, 'utf8'));
+        events.events.forEach(function (event) {
+          if (event.attachments) {
+            event.attachments.forEach(function (att) {
+              const attFile = settings.backupDirectory.getAttachmentFilePath(att.fileName, event.id, event.streamIds[0]);
+              fs.existsSync(attFile).should.equal(true, 'Cannot find ' + attFile);
+            });
+          }
+        });
+        stepDone();
+      },
+      // The DSAR-extension artefacts must also be present.
+      function checkDsarArtifacts (stepDone) {
+        fs.existsSync(settings.backupDirectory.webhooksFile).should.equal(true, 'webhooks.json missing');
+        fs.existsSync(settings.backupDirectory.manifestFile).should.equal(true, 'manifest.json missing');
+        fs.existsSync(settings.backupDirectory.auditLogsFile).should.equal(true, 'audit_logs.json missing');
+        // hf-data dir only exists if the account has series events; tolerate absence.
+        stepDone();
+      },
+      function checkContent (stepDone) {
+        async.each(resources,
+          function (resource, callback) {
+            superagent.get(connection.endpoint + resource)
+              .set('Authorization', connection.token)
+              .then(result => {
+                let outputFilename = resource.replace('/', '_').split('?')[0];
+                const json = JSON.parse(fs.readFileSync(settings.backupDirectory.baseDir + outputFilename + '.json', 'utf8'));
 
-                    if (outputFilename === 'profile_public') {
-                      outputFilename = 'profile';
+                if (outputFilename === 'profile_public') {
+                  outputFilename = 'profile';
+                }
+
+                if (outputFilename === 'accesses') {
+                  const expected = json[outputFilename];
+                  const actual = result.body[outputFilename];
+                  expected.forEach(function (access, i) {
+                    // The lastUsed property of the access used by this test
+                    // will be updated at login, so we just check that the
+                    // recorded time matches approximately (nearest second)
+                    // the time at which we started the test.
+                    if (access.name === settings.appId && access.type === 'personal') {
+                      should((actual[i].lastUsed - time) < 2).be.true();
+                      delete access.lastUsed;
+                      delete actual[i].lastUsed;
                     }
-
-
-                    if(outputFilename === 'accesses') {
-                      const expected = json[outputFilename];
-                      const actual = result.body[outputFilename];
-                      expected.forEach(function (access, i) {
-                        // The lastUsed property of the access used by this test
-                        // will be updated at login, so we just check that the
-                        // recorded time matches approximately (nearest second)
-                        // the time at which we started the test.
-                        if(access.name === settings.appId && access.type === 'personal') {
-                          should((actual[i].lastUsed - time) < 2).be.true();
-                          delete access.lastUsed;
-                          delete actual[i].lastUsed;
-                        }
-                      });
-                    }
-
-                    // find a way to test content
-                    callback();
-                  })
-                  .catch(error => {
-                    return callback(error);
                   });
-              }, stepDone);
-        }
-    ], function(err) {
+                }
+
+                // find a way to test content
+                callback();
+              })
+              .catch(error => {
+                return callback(error);
+              });
+          }, stepDone);
+      }
+    ], function (err) {
       should.not.exist(err);
       done(err);
     });

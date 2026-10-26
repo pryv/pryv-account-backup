@@ -2,7 +2,7 @@
  * @license
  * [BSD-3-Clause](https://github.com/pryv/pryv-account-backup/blob/master/LICENSE)
  */
-/*global describe, it, before, after */
+/* global describe, it, before, after */
 
 const fs = require('fs');
 const os = require('os');

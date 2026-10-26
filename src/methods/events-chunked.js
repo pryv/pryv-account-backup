@@ -95,11 +95,11 @@ exports.download = function download (connection, writer, options, callback, log
       // api-resources.toJSONFile derives the filename by stripping `?…` from
       // the resource string, so passing the full query yields `events-YYYY-MM.json`.
       apiResources.toJSONFile({
-        writer: writer,
-        resource: resource,
+        writer,
+        resource,
         extraFileName: '-' + w.label,
-        connection: connection,
-        onParsed: onParsed
+        connection,
+        onParsed
       }, function (err) {
         if (err) return callback(err);
         next();
@@ -183,7 +183,7 @@ function probeRange (connection, stateAll, options, log, callback) {
       if (err2) return callback(err2);
       const from = (options.fromTime != null) ? options.fromTime : earliest.events[0].time;
       const to = (options.toTime != null) ? options.toTime : latest.events[0].time;
-      callback(null, { from: from, to: to });
+      callback(null, { from, to });
     });
   });
 }
