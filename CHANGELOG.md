@@ -8,6 +8,8 @@
   attachments now go through the same upload, one file part per attachment, each named with its
   `fileName` and typed with its recorded `type`; on Node 19.8+ files are read from disk as the
   upload is sent instead of being loaded into memory first.
+- Development: `npm run lint` checks the code with ESLint and neostandard (semicolons), and the
+  sources follow that style. No behaviour change.
 
 ## 0.8.2 - 2026-10-13
 
