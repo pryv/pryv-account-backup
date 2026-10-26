@@ -45,7 +45,7 @@
     "superagent": "^10.3.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "overrides": {
     "diff": "^9.0.0",

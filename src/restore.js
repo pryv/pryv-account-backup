@@ -397,13 +397,6 @@ async function restoreSeriesEvents (connection, seriesEvents, sourcePath, report
   }
 }
 
-// fs.openAsBlob (Node 19.8+) reads the file from disk as the upload is sent,
-// so a large attachment is not held in memory; Node 18 falls back to a read.
-async function fileAsBlob (filepath, type) {
-  if (typeof fs.openAsBlob === 'function') return fs.openAsBlob(filepath, { type });
-  return new Blob([await fs.promises.readFile(filepath)], { type });
-}
-
 async function uploadEventsWithAttachments (connection, eventsWithAttachments, sourcePath, report) {
   const res = [];
   for (let i = 0; i < eventsWithAttachments.length; i++) {
@@ -419,10 +412,13 @@ async function uploadEventsWithAttachments (connection, eventsWithAttachments, s
       // its original fileName. The backup stores files on disk as
       // <eventId>_<fileName>; createEventWithFile would upload under that
       // on-disk name, so it is not used even for a single attachment.
+      // fs.openAsBlob reads each file from disk as the upload is sent, so a
+      // large attachment is not held in memory.
       const formData = new FormData();
       for (const a of attachmentList) {
         const filepath = path.join(sourcePath, 'attachments', fileId + '_' + a.fileName);
-        formData.append('file', await fileAsBlob(filepath, a.type || 'application/octet-stream'), a.fileName);
+        const type = a.type || 'application/octet-stream';
+        formData.append('file', await fs.openAsBlob(filepath, { type }), a.fileName);
       }
       const result = await connection.createEventWithFormData(e, formData);
       res.push(result);

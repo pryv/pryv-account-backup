@@ -6,8 +6,10 @@
   name. It used to be uploaded under the backup's on-disk name `<eventId>_<fileName>`, so
   `report.pdf` came back as `<eventId>_report.pdf` (content unchanged). Events with one or several
   attachments now go through the same upload, one file part per attachment, each named with its
-  `fileName` and typed with its recorded `type`; on Node 19.8+ files are read from disk as the
-  upload is sent instead of being loaded into memory first.
+  `fileName` and typed with its recorded `type`; files are read from disk as the upload is sent
+  instead of being loaded into memory first.
+- Requires Node 20 or later (`engines` was `>=18`). The `pryv` dependency already required Node
+  20, so the tool never ran on Node 18.
 
 ## 0.8.2 - 2026-10-13
 

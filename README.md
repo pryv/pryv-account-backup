@@ -163,7 +163,7 @@ password. What it does:
 
 ## Contribute
 
-Prerequisites: Node v18+
+Prerequisites: Node v20+
 
 Install dependencies: `npm install`
 
