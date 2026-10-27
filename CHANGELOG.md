@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 - 2026-10-27
 
 - Restore: an event with a single attachment gets its attachment back under its original file
   name. It used to be uploaded under the backup's on-disk name `<eventId>_<fileName>`, so
