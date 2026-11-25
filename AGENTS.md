@@ -21,7 +21,7 @@ Per-user run output (CLI, in a folder; webapp, across N ZIP files):
 | `streams.json` | `GET /streams` (or `?state=all` with `--includeTrashed`) | stream hierarchy |
 | `accesses.json` | `GET /accesses` | current accesses |
 | `accesses-all.json` | `GET /accesses?includeDeletions=true&includeExpired=true` | full disclosure-history view |
-| `profile_private.json` / `profile_public.json` | `GET /profile/{private,public}` | includes `profile.mfa.{content,recoveryCodes}` when MFA enabled |
+| `profile_private.json` / `profile_public.json` | `GET /profile/{private,public}` | with MFA enabled: the enrolment as the private-profile read returns it (method, content, TOTP parameters; since open-pryv.io 2.0.0-rc.27 neither the encrypted TOTP secret nor the recovery-code hashes) |
 | `app_profiles/profile_app_<accessId>.json` | per-app `GET /profile/app` with each app token | |
 | `audit_logs.json` (first run) / `audit_logs-incremental-<TS>.json` (subsequent runs) | **`GET /events?streams=[':_audit:accesses',':_audit:actions']`** (`&modifiedSince=T` on subsequent runs), paged with explicit `limit` + time range (v0.6.0+) — was `/audit/logs` in v0.4.0–v0.5.0 | audit is a regular `@pryv/datastore` mounted at `:_audit:*` on every Pryv core; the dedicated `/audit/logs` route was **removed** from open-pryv.io on 2026-06-15 (commit `19d1c11f`), so v0.5.0 and earlier are now production-broken for the audit-log section against any deployment running that build |
 | `events-YYYY-MM.json` | `GET /events?fromTime=…&toTime=…` per monthly chunk (initial run) | preserves the v0.5.0 chunking story for first runs |
