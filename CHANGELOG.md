@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+- Sign-in: an account with multi-factor authentication active can be backed up and restored.
+  Before, the sign-in stopped at the platform's `MfaRequiredError`. The backup and restore scripts
+  now ask for the one-time code: the code from the authenticator app (TOTP), or the code sent by
+  SMS, where an empty line sends a new SMS (up to 3 per sign-in; a request the platform refuses,
+  at most one per 30 seconds, is reported and the prompt stays). A wrong code can be typed again,
+  up to 3 attempts. The code must be typed in a terminal: from a pipe the step stops with a
+  message. Recovery codes are not accepted, since on the platform a recovery code turns
+  multi-factor authentication off on the account; the scripts point a person who lost their
+  second factor to the recovery in their account app.
+- CLI: the backup and restore scripts stopped at their first question with
+  `TypeError: read is not a function` (the `read` 5 package exports `{ read }`); they ask their
+  questions again.
+- CLI: when the input ends before an answer (end of a pipe, Ctrl-D), the scripts stop with a
+  message and a non-zero exit code; they used to exit with code 0 and no message.
+- A failed sign-in or a failed backup run is printed once instead of twice: `start()` and
+  `Backup.run()` no longer log the error they pass to their callback (the CLI prints it).
+  `scripts/kickstart.js` now reports a failure instead of "Backup completed".
+- Library: `start()` / `signInToPryv()` take `mfaCode` (one attempt; a blank one counts as
+  absent) or `onMfaRequired` (async, returns the code, receives `{ method, resend, attempt,
+  maxAttempts, previousError }`; `maxAttempts` a positive integer, 3 by default). Without
+  either, the `MfaRequiredError` is passed on as before. The flow is exported as
+  `signInWithMfa(service, username, password, appId, origin, handlers)` (browser-isomorphic), with
+  `isMfaRequired` and `LOST_FACTOR_HINT`. The password, the code and the MFA token are never
+  printed.
+
 ## 0.9.0 - 2026-10-27
 
 - Restore: an event with a single attachment gets its attachment back under its original file

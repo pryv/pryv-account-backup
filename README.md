@@ -28,6 +28,10 @@ In your terminal, run the following commands:
 
 This will ask you for the **service-info url**, **username** and **password** of the Pryv account you wish to back up.
 
+If the account has **multi-factor authentication** active, the script then asks for the one-time code: the code from your authenticator app, or the code sent by SMS when you sign in. For SMS, leave the line empty to have a new code sent, up to 3 times per sign-in (the next empty line cancels; Ctrl-C cancels at any time); the platform sends at most one code per 30 seconds, and a refused request is reported while the prompt stays. A wrong code can be typed again, up to 3 attempts. The code must be typed in a terminal: run from a pipe, the script stops at that step with a message. Recovery codes are not accepted: on the platform a recovery code turns multi-factor authentication off on the account. If you lost your second factor, use the recovery in your account app, then run the backup again.
+
+The scripts need a terminal for their questions: if the input ends before an answer (end of a pipe, Ctrl-D), they stop with a message and a non-zero exit code.
+
 You can finally choose to backup also trashed data as well as attachment files.
 
 ### Format
@@ -59,12 +63,12 @@ The operation might take a while in case the data size is substantial. Please, l
 
 `@pryv/account-backup` is consumable as a programmatic library in addition to the CLI. The sample webapp [`pryv-account-backup-webapp`](https://github.com/pryv/pryv-account-backup-webapp) uses this surface; custom tools (migration scripts, Pryv-to-Pryv transfer flows, integration tests) can do the same.
 
-The package is git-clone-distributed — **not on the npm registry**. Pin to a tag via:
+The package is git-clone-distributed, **not on the npm registry**. Pin to a tag (the latest is listed on the [tags page](https://github.com/pryv/pryv-account-backup/tags)) via:
 
 ```json
 {
   "dependencies": {
-    "pryv-account-backup": "github:pryv/pryv-account-backup#v0.7.0"
+    "pryv-account-backup": "github:pryv/pryv-account-backup#v0.9.0"
   }
 }
 ```
@@ -89,6 +93,20 @@ backup.start({
   // ...
 });
 ```
+
+**Not in v0.9.0 or earlier:** the multi-factor sign-in below (`mfaCode`, `onMfaRequired`, `signInWithMfa`, `isMfaRequired`, `LOST_FACTOR_HINT`) arrives with the first tag after v0.9.0; with v0.9.0, `start()` stops at the `MfaRequiredError`.
+
+`start()` and `signInToPryv()` sign in to an account with multi-factor authentication when given either `mfaCode` (one attempt with that code) or `onMfaRequired`, an async function that receives `{ method, resend, attempt, maxAttempts, previousError }` and returns the code (`method` is `'totp'` or `'sms'`, or absent on older cores, which only offered SMS; `resend()` sends a new SMS code; after a wrong code it is called again, up to `maxAttempts` times, 3 by default; an empty answer cancels). With neither, the `MfaRequiredError` thrown by lib-js's `Service.login` is passed on unchanged. The same flow is exported for other tools:
+
+```javascript
+const { signInWithMfa } = require('pryv-account-backup');
+
+const connection = await signInWithMfa(service, username, password, APP_ID, undefined, {
+  onMfaRequired: async ({ method, resend }) => askTheUserForTheCode(method, resend)
+});
+```
+
+Recovery codes are deliberately not a sign-in path (a recovery code turns multi-factor authentication off on the account); `LOST_FACTOR_HINT` is a ready-made sentence pointing the person to their account's own recovery.
 
 **Class-based API** (v0.6.0+, the entry point library consumers should prefer):
 
@@ -137,7 +155,8 @@ npm run restore -- <path to backup dir> --restore-secondary-emails
 ```
 
 The script asks for the target platform's service info URL and the target account's username and
-password. What it does:
+password, and for the one-time code when the target account has multi-factor authentication active
+(as the backup script does). What it does:
 
 - **Streams and events** are re-created with `streams.create` / `events.create`. Streams and events
   in server-managed namespaces (any id starting with `:`, e.g. `:_system:`, `:system:`, `:_audit:`)
