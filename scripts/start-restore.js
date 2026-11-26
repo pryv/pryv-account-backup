@@ -52,6 +52,12 @@ if (!backupHasEvents(sourceArg)) {
     '(no events.json or events-YYYY-MM.json found)');
   process.exit(1);
 }
+// The restore reads the stream tree first; checked here, before any question.
+if (!fs.existsSync(path.join(sourceArg, 'streams.json'))) {
+  console.log('Directory [' + sourceArg + '] is not a complete backup: ' +
+    'streams.json is missing (it holds the stream tree the events are restored into)');
+  process.exit(1);
+}
 context.backupSource = sourceArg;
 
 async.series([

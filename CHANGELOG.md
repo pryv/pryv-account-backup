@@ -19,6 +19,9 @@
 - A failed sign-in or a failed backup run is printed once instead of twice: `start()` and
   `Backup.run()` no longer log the error they pass to their callback (the CLI prints it).
   `scripts/kickstart.js` now reports a failure instead of "Backup completed".
+- CLI: `scripts/start-restore.js` on a folder without `streams.json` stopped after the sign-in
+  with a raw `ENOENT` and a stack trace. It now says, before any question, that the folder is not
+  a complete backup and that `streams.json` is missing, and exits with code 1.
 - Library: `start()` / `signInToPryv()` take `mfaCode` (one attempt; a blank one counts as
   absent) or `onMfaRequired` (async, returns the code, receives `{ method, resend, attempt,
   maxAttempts, previousError }`; `maxAttempts` a positive integer, 3 by default). Without

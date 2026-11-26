@@ -101,6 +101,7 @@ describe('[CLIS] CLI scripts in a child process', function () {
     url = 'http://127.0.0.1:' + server.address().port + '/service/info';
     restoreDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clis-restore-'));
     fs.writeFileSync(path.join(restoreDir, 'events.json'), '{"events":[]}');
+    fs.writeFileSync(path.join(restoreDir, 'streams.json'), '{"streams":[]}');
   });
 
   after(function () {
@@ -134,6 +135,21 @@ describe('[CLIS] CLI scripts in a child process', function () {
     const { code, out } = await runScript(['scripts/start-restore.js', restoreDir], [['Service info URL:', url]]);
     code.should.not.equal(0);
     out.should.containEql('Input ended before an answer to "Username :"');
+  });
+
+  it('[CLS7] restore: a folder without streams.json stops with a message, before any question', async function () {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clis-nostreams-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'events-2026-01.json'), '{"events":[]}');
+      const { code, out } = await runScript(['scripts/start-restore.js', dir], []);
+      code.should.equal(1);
+      out.should.containEql('is not a complete backup: streams.json is missing');
+      out.should.not.containEql('Service info URL:');
+      out.should.not.containEql('ENOENT');
+      out.should.not.match(/\n\s+at /); // the message alone, no stack trace
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('[CLS3] backup: a failed sign-in is printed once', async function () {
