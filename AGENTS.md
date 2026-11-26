@@ -40,7 +40,10 @@ Per-user run output (CLI, in a folder; webapp, across N ZIP files):
 src/lib/
 ├── Backup.js                  ← orchestrator (coordinates per-method modules; wires onParsed
 │                                tee → state.pushRef; drains refs through per-category drainers)
-├── index.js                   ← library entry: Backup + adapters
+├── index.js                   ← library entry: Backup + adapters + signInWithMfa
+├── signInWithMfa.js           ← password sign-in + multi-factor step (TOTP / SMS code, bounded
+│                                retries, SMS resend); recovery codes deliberately not accepted
+│                                (they turn MFA off on the account); browser-isomorphic
 └── adapters/
     ├── StorageWriter.js       ← abstract: openWriteStream / exists / finalizeBatch
     ├── StateStore.js          ← abstract: kv (get / set / getAll / flush)
@@ -62,7 +65,10 @@ src/methods/                   ← per-resource fetchers (all browser-isomorphic
 
 scripts/
 ├── start-backup.js            ← CLI entry (interactive prompts)
-└── start-restore.js           ← CLI restore (experimental, deliberately limited)
+├── start-restore.js           ← CLI restore (experimental, deliberately limited)
+├── prompt.js                  ← `ask()`: `read` + end-of-input detection (non-zero exit, message)
+└── mfa-prompt.js              ← terminal prompt for the multi-factor code (both scripts;
+                                 SMS resend bounded and guarded; needs a terminal)
 
 src/restore.js                 ← restore-side logic (CLI only; library does NOT export restore);
                                  never replays ':'-prefixed streams/events, restores account
@@ -103,12 +109,14 @@ drain step      │ attachments.download │  fetch + write + markDone
 - **Restore-side reproducibility for audit / webhooks / accesses.** These are **deliberately not replayed** on restore — they're system-generated or carry server-minted tokens. The webapp does not expose restore at all; the CLI restore is marked experimental.
 - **Adding a server-side endpoint to open-pryv.io.** This tool calls the public API; it is not a core feature. The historical alternative (an `account.export` core endpoint) was explicitly rejected in favor of the library + sample webapp architecture.
 - **Removing the `manifest.json` from CLI output.** The sha256 manifest is the third-party-auditor tamper-evidence story for the CLI. The webapp's lack of a manifest is a deliberate trade-off documented in `pryv-account-backup-webapp/README.md`.
-- **Bumping the `pryv` lib-js major version.** The library calls `Service.login`, `Connection.api`, `addPointsToHFEvent`, `createEventWithFormData`. A major bump on lib-js needs a careful read of every consumer + the deps section in `package.json`.
+- **Accepting a recovery code at sign-in.** A recovery code turns MFA off on the account; the tools ask only for the TOTP / SMS code and point a person who lost their second factor to the account's own recovery.
+- **Bumping the `pryv` lib-js major version.** The library calls `Service.login` (+ `mfaChallenge` / `mfaVerify` for MFA accounts), `Connection.api`, `addPointsToHFEvent`, `createEventWithFormData`. A major bump on lib-js needs a careful read of every consumer + the deps section in `package.json`.
 
 ## Build + test cadence
 
 - `npm install && npm test` runs the credential-free unit suite (Mocha). The CI is currently dormant (`.travis.yml` is stale; no GitHub Actions yet). Add or update CI as a separate concern when needed.
 - Live-account tests (`test/acceptance/backup.test.js`, `test/unit/api-resources.test.js`, `test/unit/attachments.test.js`, `test/unit/backup-directory.test.js`) are part of `npm test` but skip, with a notice, unless `PRYV_BACKUP_TEST_USERNAME` and `PRYV_BACKUP_TEST_PASSWORD` (optionally `PRYV_BACKUP_TEST_SERVICE_INFO_URL`) name an account; see the README's "Running the tests".
+- `test/unit/sign-in-mfa.test.js` (fake service) and `test/unit/cli-scripts.test.js` (the scripts in a child process against a fake platform on 127.0.0.1) cover the sign-in and the CLI prompts without a real platform; the MFA code prompt itself needs a terminal, so check it by hand (`script -q /dev/null npm start` or a real terminal) after changing it.
 - `npx mocha test/unit/events-chunked.test.js test/unit/manifest.test.js test/unit/adapters.test.js test/unit/incremental.test.js test/unit/isomorphism.test.js` runs the v0.5.0/v0.6.0 unit suites that ship without credentials.
 
 ## Distribution

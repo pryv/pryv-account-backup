@@ -5,15 +5,16 @@
 const fs = require('fs');
 const path = require('path');
 const async = require('async');
-const read = require('read');
 const pryv = require('pryv');
 const restore = require('../src/restore.js');
+const { signInWithMfa } = require('../src/lib/signInWithMfa');
+const { ask, describeFailure } = require('./prompt');
+const { onMfaRequired } = require('./mfa-prompt');
 const context = {};
 
-// read v5+ returns a Promise instead of taking a callback. Wrap so the existing
-// async.series chain stays intact without rewriting the script.
+// The prompt returns a Promise; wrap it so the async.series chain stays intact.
 function readP (opts, callback) {
-  read(opts).then((value) => callback(null, value)).catch(callback);
+  ask(opts).then((value) => callback(null, value), callback);
 }
 
 // Accept either legacy single-file events.json (older backups) or any chunked
@@ -84,7 +85,9 @@ async.series([
     });
   },
   function login (done) {
-    context.service.login(context.username, context.password, 'restore-bkp').then(function (connection) {
+    // An account with multi-factor authentication asks for its code here.
+    signInWithMfa(context.service, context.username, context.password, 'restore-bkp', undefined,
+      { onMfaRequired }).then(function (connection) {
       context.connection = connection;
       done();
     }, done);
@@ -103,7 +106,7 @@ async.series([
   }
 ], function (err) {
   if (err) {
-    console.log('Failed in process with error', err);
+    console.log('Failed in process with error', describeFailure(err));
     process.exitCode = 1;
   }
 });

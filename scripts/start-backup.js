@@ -4,16 +4,17 @@
  */
 const fs = require('fs');
 const async = require('async');
-const read = require('read');
 const backup = require('../src/main');
 const BackupDirectory = require('../src/methods/backup-directory');
 const pryv = require('pryv');
-const context = {};
+const { ask, describeFailure } = require('./prompt');
+const { onMfaRequired } = require('./mfa-prompt');
+// An account with multi-factor authentication asks for its code at sign-in.
+const context = { onMfaRequired };
 
-// read v5+ returns a Promise instead of taking a callback. Wrap so the existing
-// async.series chain stays intact without rewriting the script.
+// The prompt returns a Promise; wrap it so the async.series chain stays intact.
 function readP (opts, callback) {
-  read(opts).then((value) => callback(null, value)).catch(callback);
+  ask(opts).then((value) => callback(null, value), callback);
 }
 
 async.series([
@@ -106,7 +107,7 @@ async.series([
   }
 ], function (err) {
   if (err) {
-    console.log('Failed in process with error', err);
+    console.log('Failed in process with error', describeFailure(err));
     process.exitCode = 1;
   }
 });

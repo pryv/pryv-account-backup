@@ -324,10 +324,9 @@ class Backup {
           manifest.generate(backupDirectory.baseDir, { version: pkg.version, log }, stepDone);
         }
       ], function (err) {
-        if (err) {
-          log('Failed in process with error' + err);
-          return callback(err);
-        }
+        // A failure goes to the callback, which reports it (the CLI prints it
+        // once); it is not logged here too.
+        if (err) return callback(err);
         callback();
       });
     }

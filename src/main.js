@@ -22,9 +22,18 @@ const pryv = require('pryv');
 const Backup = require('./lib/Backup');
 const NodeFsStorageWriter = require('./lib/adapters/NodeFsStorageWriter');
 const FolderStateStore = require('./lib/adapters/FolderStateStore');
+const { signInWithMfa } = require('./lib/signInWithMfa');
 
 const appId = 'pryv-backup';
 
+/**
+ * Signs in with `context.username` / `context.password` and resolves with the
+ * connection. For an account with multi-factor authentication active it uses
+ * `context.mfaCode` (one attempt) or `context.onMfaRequired({ method, resend,
+ * ... })` (async, returns the code; asked again after a wrong code, a bounded
+ * number of times); with neither, lib-js's `MfaRequiredError` is rethrown.
+ * See `./lib/signInWithMfa.js`.
+ */
 async function signInToPryv (context) {
   if (!context.service) {
     context.service = new pryv.Service(context.serviceInfoUrl);
@@ -35,7 +44,10 @@ async function signInToPryv (context) {
     context.origin = url.protocol + '//' + url.hostname;
   }
   console.log('Login with origin: ' + context.origin);
-  return await context.service.login(context.username, context.password, appId, context.origin);
+  return await signInWithMfa(context.service, context.username, context.password, appId, context.origin, {
+    mfaCode: context.mfaCode,
+    onMfaRequired: context.onMfaRequired
+  });
 }
 
 /**
@@ -44,6 +56,8 @@ async function signInToPryv (context) {
  * @param params {object}
  *        params.username {string}
  *        params.password {string}
+ *        params.mfaCode {string} optional, see `signInToPryv`
+ *        params.onMfaRequired {function} optional, see `signInToPryv`
  *        params.serviceInfoUrl {string}
  *        params.includeTrashed {boolean}
  *        params.includeAttachments {boolean}
@@ -63,7 +77,7 @@ exports.start = function (params, callback) {
       callback(err);
     }
   }, function (err) {
-    console.log('Connection failed with Error:', err);
+    // Reported by the caller (the CLI prints it once); not printed here too.
     callback(err);
   });
 };
@@ -103,3 +117,6 @@ exports.StorageWriter = lib.StorageWriter;
 exports.StateStore = lib.StateStore;
 exports.NodeFsStorageWriter = lib.NodeFsStorageWriter;
 exports.FolderStateStore = lib.FolderStateStore;
+exports.signInWithMfa = lib.signInWithMfa;
+exports.isMfaRequired = lib.isMfaRequired;
+exports.LOST_FACTOR_HINT = lib.LOST_FACTOR_HINT;

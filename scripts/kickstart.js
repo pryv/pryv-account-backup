@@ -30,6 +30,11 @@ try {
 }
 
 params.backupDirectory = new BackupDirectory(params.username);
-backup.start(params, () => {
+backup.start(params, (err) => {
+  if (err) {
+    console.log('Backup failed:', err);
+    process.exitCode = 1;
+    return;
+  }
   console.log('Backup completed');
 });
