@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 - 2026-11-27
 
 - Sign-in: an account with multi-factor authentication active can be backed up and restored.
   Before, the sign-in stopped at the platform's `MfaRequiredError`. The backup and restore scripts

@@ -68,7 +68,7 @@ The package is git-clone-distributed, **not on the npm registry**. Pin to a tag 
 ```json
 {
   "dependencies": {
-    "pryv-account-backup": "github:pryv/pryv-account-backup#v0.9.0"
+    "pryv-account-backup": "github:pryv/pryv-account-backup#v0.10.0"
   }
 }
 ```
@@ -94,7 +94,7 @@ backup.start({
 });
 ```
 
-**Not in v0.9.0 or earlier:** the multi-factor sign-in below (`mfaCode`, `onMfaRequired`, `signInWithMfa`, `isMfaRequired`, `LOST_FACTOR_HINT`) arrives with the first tag after v0.9.0; with v0.9.0, `start()` stops at the `MfaRequiredError`.
+**Since v0.10.0:** the multi-factor sign-in below (`mfaCode`, `onMfaRequired`, `signInWithMfa`, `isMfaRequired`, `LOST_FACTOR_HINT`); with v0.9.0 or earlier, `start()` stops at the `MfaRequiredError`.
 
 `start()` and `signInToPryv()` sign in to an account with multi-factor authentication when given either `mfaCode` (one attempt with that code) or `onMfaRequired`, an async function that receives `{ method, resend, attempt, maxAttempts, previousError }` and returns the code (`method` is `'totp'` or `'sms'`, or absent on older cores, which only offered SMS; `resend()` sends a new SMS code; after a wrong code it is called again, up to `maxAttempts` times, 3 by default; an empty answer cancels). With neither, the `MfaRequiredError` thrown by lib-js's `Service.login` is passed on unchanged. The same flow is exported for other tools:
 
